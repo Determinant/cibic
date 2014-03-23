@@ -1,5 +1,6 @@
 %{
 #include <stdio.h>
+#include "ast.h"
 %}
 %token IDENTIFIER INT_CONST CHAR_CONST STR_CONST
 %token KW_VOID KW_CHAR KW_INT KW_STRUCT KW_UNION KW_IF KW_ELSE KW_WHILE

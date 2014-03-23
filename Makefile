@@ -9,3 +9,6 @@ lex.yy.c: cibic.l
 	flex cibic.l
 cibic.tab.c: cibic.y
 	bison -d cibic.y
+
+clean:
+	rm -f cibic lex.yy.c cibic.tab.c
