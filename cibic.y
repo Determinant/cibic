@@ -24,7 +24,7 @@
 %start program
 %%
 program
-    : prog_list { ast_root = cnode_list_wrap(PROG, $1); }
+    : prog_list { ast_root = cnode_create_ast(cnode_list_wrap(PROG, $1)); }
 
 prog_list
     : declaration
@@ -33,7 +33,9 @@ prog_list
     | prog_list function_definition { $$ = cnode_list_append($1, $2); }
 
 declaration
-    : type_specifier ';' { $$ = cnode_create_decl($1, cnode_create_nop()); } 
+    : type_specifier ';' {
+        $$ = cnode_create_decl($1, cnode_list_wrap(INIT_DECLRS, cnode_create_nop()));
+    }
     | type_specifier init_declarators ';' { 
         $$ = cnode_create_decl($1, cnode_list_wrap(INIT_DECLRS, $2)); 
     }
@@ -43,7 +45,7 @@ function_definition
         $$ = cnode_create_func($1, $2, cnode_list_wrap(PARAMS, $4), $6);
     }
     | type_specifier plain_declarator '(' ')' compound_statement {
-        $$ = cnode_create_func($1, $2, cnode_create_nop(), $5);
+        $$ = cnode_create_func($1, $2, cnode_list_wrap(PARAMS, cnode_create_nop()), $5);
     }
 
 parameters
@@ -94,8 +96,12 @@ plain_declaration
     : type_specifier declarator { $$ = cnode_create_plain_decl($1, $2); }
 
 declarator
-    : plain_declarator '(' ')'              { $$ = cnode_create_declr(DECLR_FUNC, 2, $1, cnode_create_nop());}
-    | plain_declarator '(' parameters ')'   { $$ = cnode_create_declr(DECLR_FUNC, 2, $1, $3);}
+    : plain_declarator '(' ')' { 
+        $$ = cnode_create_declr(DECLR_FUNC, 2, $1, cnode_list_wrap(PARAMS, cnode_create_nop()));
+    }
+    | plain_declarator '(' parameters ')' {
+        $$ = cnode_create_declr(DECLR_FUNC, 2, $1, cnode_list_wrap(PARAMS, $3));
+    }
     | declarator_array
 
 declarator_array
@@ -293,9 +299,12 @@ postfix_expression
 
 postfix
     : '[' expression ']' { $$ = cnode_create_exp(POSTFIX_ARR, 1, $2); }
-    | '(' arguments ')' { $$ = cnode_create_exp(POSTFIX_CALL, 1, 
-                                                 cnode_list_wrap(ARGS, $2)); }
-    | '(' ')' { $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_create_nop()); }
+    | '(' arguments ')' { 
+        $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_list_wrap(ARGS, $2)); 
+    }
+    | '(' ')' { 
+        $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_list_wrap(cnode_create_nop()));
+    }
     | '.' identifier { $$ = cnode_create_exp(POSTFIX_DOT, 1, $2); }
     | OPT_PTR identifier { $$ = cnode_create_exp(POSTFIX_PTR, 1, $2); }
     | OPT_INC { $$ = cnode_create_exp(OPT_INC, 0); }
@@ -327,7 +336,7 @@ void test_ast() {
     yyparse();
     cnode_init();
     if (ast_root)
-        cnode_debug_print(ast_root);
+        cnode_debug_print(ast_root, 1);
     else
         fprintf(stderr, "Syntax Error\n");
 }

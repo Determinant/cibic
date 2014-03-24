@@ -11,6 +11,28 @@ CNode *ast_root;
 void cnode_init() {
 }
 
+void cnode_reverse_chd(CNode *node) {
+    static CNode *chdn[MAX_CHDN];
+    CNode *p;
+    int n = 0;
+    for (p = node->chd; p; p = p->next)
+        cnode_reverse_chd(p);
+    for (p = node->chd; p; p = p->next)
+        chdn[n++] = p;
+    if (n)
+    {
+        node->chd = chdn[--n];
+        for (; n; n--)
+            chdn[n]->next = chdn[n - 1];
+        chdn[0]->next = NULL;
+    }
+}
+
+CNode *cnode_create_ast(CNode *wrapped) {
+    cnode_reverse_chd(wrapped);
+    return wrapped;
+}
+
 CNode *cnode_create_nop() {
     CNode *nop = NEW_CNODE;
     nop->type = NOP;
@@ -203,8 +225,8 @@ CNode *cnode_list_wrap(int type, CNode *list) {
 }
 
 char *cnode_debug_type_repr(CNode *ast) {
-    static char buffer[1024];
-    char *type;
+    static char buffer[1024], abuff[1024];
+    char *type, *aptr = abuff;
     switch (ast->type)
     {
         case PROG:      type = "prog"; break;
@@ -222,10 +244,22 @@ char *cnode_debug_type_repr(CNode *ast) {
         case INIT_DECLRS: type = "i_declrs"; break;
         case ARGS:  type = "args"; break;
         case PARAMS: type = "params"; break;
-        case ID:  type = "id"; break;
-        case INT:  type = "int"; break;
-        case CHAR:  type = "char"; break;
-        case STR:  type = "str"; break;
+        case ID:
+            type = "id"; 
+            aptr += sprintf(abuff, "%s", ast->rec.strval);
+            break;
+        case INT:
+            type = "int"; 
+            aptr += sprintf(abuff, "%d", ast->rec.intval);
+            break;
+        case CHAR:
+            type = "char";
+            aptr += sprintf(abuff, "%c", ast->rec.intval);
+            break;
+        case STR:
+            type = "str";
+            aptr += sprintf(abuff, "\"%s\"", ast->rec.strval);
+            break;
         case NOP: type = "nop"; break;
         case EXP: 
         case INITR: 
@@ -328,21 +362,46 @@ char *cnode_debug_type_repr(CNode *ast) {
         }
     }
     else assert(type);
-    sprintf(buffer, "%s", type);
+    if (aptr == abuff)
+        sprintf(buffer, "%s", type);
+    else
+    {
+        *aptr = '\0';
+        sprintf(buffer, "%s:%s", type, abuff);
+    }
     return buffer;
 }
 
-void cnode_debug_print_(CNode *ast) {
+void cnode_debug_print_plain(CNode *ast) {
     printf("(%s", cnode_debug_type_repr(ast));
     for (ast = ast->chd; ast; ast = ast->next)
     {
         printf(" ");
-        cnode_debug_print_(ast);
+        cnode_debug_print_plain(ast);
     }
     printf(")");
 }
 
-void cnode_debug_print(CNode *ast) {
-    cnode_debug_print_(ast);
+void cnode_debug_print_fancy(CNode *ast, int lvl) {
+    static int show[1024];
+    int i;
+    show[lvl] = 1;
+    for (i = 0; i < lvl - 1; i++)
+        printf("%c    ", show[i] ? '|' : ' ');
+    if (lvl)
+        printf("|____");
+    printf("[%s]\n", cnode_debug_type_repr(ast));
+    for (ast = ast->chd; ast; ast = ast->next)
+    {
+        if (!ast->next) show[lvl] = 0;
+        cnode_debug_print_fancy(ast, lvl + 1);
+    }
+}
+
+void cnode_debug_print(CNode *ast, int fancy) {
+    if (fancy)
+        cnode_debug_print_fancy(ast, 0);
+    else
+        cnode_debug_print_plain(ast);
     puts("");
 }

@@ -20,6 +20,8 @@
 #define STMT_BREAK      1040
 #define STMT_RET        1041
 
+#define MAX_CHDN        1024
+
 typedef struct CNode {
     enum {
         /* Top Level */
@@ -67,6 +69,7 @@ typedef struct CNode {
 } CNode;
 
 void cnode_init();
+CNode *cnode_create_ast(CNode *wrapped);
 CNode *cnode_create_nop();
 CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap); 
 CNode *cnode_list_append(CNode *list, CNode *tail);
@@ -89,7 +92,7 @@ CNode *cnode_create_int_const(int val);
 CNode *cnode_create_char_const(int val);
 CNode *cnode_create_str_const(char *val);
 
-void cnode_debug_print(CNode *ast);
+void cnode_debug_print(CNode *ast, int fancy);
 
 extern CNode *ast_root;
 extern CNode *null;
