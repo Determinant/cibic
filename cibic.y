@@ -7,7 +7,7 @@
     char *strval;
     struct CNode *cnode;
 }
-
+%error-verbose
 %token IDENTIFIER INT_CONST CHAR_CONST STR_CONST
 %token KW_VOID KW_CHAR KW_INT KW_STRUCT KW_UNION KW_IF KW_ELSE KW_WHILE
 %token KW_FOR KW_CONT KW_BREAK KW_RET KW_SIZEOF
@@ -161,7 +161,10 @@ jump_statement
 
 expression
     : assignment_expression
-    | expression ',' assignment_expression { $$ = cnode_create_exp(',', 2, $1, $3); }
+    | expression ',' assignment_expression { 
+        printf("%d, %d\n", @$.first_line, @$.first_column);
+        $$ = cnode_create_exp(',', 2, $1, $3); 
+    }
 
 assignment_expression
     : logical_or_expression

@@ -81,12 +81,12 @@ CNode *cnode_create_int_const(int val) {
     return exp;
 }
 
-CNode *cnode_create_char_const(int val) {
+CNode *cnode_create_char_const(char *val) {
     /* TODO: overflow checking */
     CNode *exp = NEW_CNODE;
     exp->type = CHAR;
     exp->chd = exp->next = NULL;
-    exp->rec.intval = val;
+    exp->rec.strval = val;
     return exp;
 }
 
@@ -375,13 +375,13 @@ char *cnode_debug_type_repr(CNode *ast) {
 }
 
 void cnode_debug_print_plain(CNode *ast) {
-    printf("(%s", cnode_debug_type_repr(ast));
+    fprintf(stderr, "(%s", cnode_debug_type_repr(ast));
     for (ast = ast->chd; ast; ast = ast->next)
     {
-        printf(" ");
+        fprintf(stderr, " ");
         cnode_debug_print_plain(ast);
     }
-    printf(")");
+    fprintf(stderr, ")");
 }
 
 void cnode_debug_print_fancy(CNode *ast, int lvl) {
@@ -389,10 +389,10 @@ void cnode_debug_print_fancy(CNode *ast, int lvl) {
     int i;
     show[lvl] = 1;
     for (i = 0; i < lvl - 1; i++)
-        printf("%c    ", show[i] ? '|' : ' ');
+        fprintf(stderr, "%c    ", show[i] ? '|' : ' ');
     if (lvl)
-        printf("|____");
-    printf("[%s]\n", cnode_debug_type_repr(ast));
+        fprintf(stderr, "|____");
+    fprintf(stderr, "[%s]\n", cnode_debug_type_repr(ast));
     for (ast = ast->chd; ast; ast = ast->next)
     {
         if (!ast->next) show[lvl] = 0;

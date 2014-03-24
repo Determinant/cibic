@@ -1,11 +1,19 @@
 %{
 #include "cibic.tab.h"
+int yycolumn = 1;
+#define YY_USER_ACTION \
+    yylloc.first_line = yylloc.last_line = yylineno; \
+    yylloc.first_column = yycolumn; yylloc.last_column = yycolumn + yyleng - 1; \
+    yycolumn += yyleng;
+
 %}
 
 letter [a-zA-Z_$]
 digit [0-9]
 %s IN_BLOCK_COMMENT IN_INLINE_COMMENT IN_DIRECTIVE
+%option yylineno
 %%
+
 
 <INITIAL>{
 "/*"    BEGIN(IN_BLOCK_COMMENT);
@@ -14,22 +22,22 @@ digit [0-9]
 "*/"    BEGIN(INITIAL);
 [^*\n]+   // eat comment in chunks
 "*"       // eat the lone star
-\n
+\n      { yycolumn = 1; }
 }
 
 <INITIAL>{
 "//"    BEGIN(IN_INLINE_COMMENT);
 }
 <IN_INLINE_COMMENT>{
-\n      BEGIN(INITIAL);
+\n      { yycolumn = 1; BEGIN(INITIAL); }
 [^\n]+ 
 }
 
 <INITIAL>{
-"#"    BEGIN(IN_INLINE_COMMENT);
+"#"    BEGIN(IN_DIRECTIVE);
 }
 <IN_DIRECTIVE>{
-\n      BEGIN(INITIAL);
+\n      { yycolumn = 1; BEGIN(INITIAL); }
 [^\n]+ 
 }
 
@@ -99,6 +107,7 @@ digit [0-9]
 
 [();,={}\[\]*|\^&<>+\-*//%~!.]              { return *yytext; }
 
-[ \t\n\r]                                   /* skip whitespaces */
+[ \t\r]                                   /* skip whitespaces */
+\n                                          { yycolumn = 1; }
 .                                           { return UNKNOWN; }
 %%

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <getopt.h>
+#include <stdlib.h>
 #include "cibic.tab.h"
 #include "ast.h"
 
@@ -12,21 +13,20 @@ int yywrap() {
 }
 
 int yyerror(char *s) {
+    fprintf(stderr, "%s\n", s);
 }
 
 void print_ast() {
-    yyparse();
     if (fname)
-        printf("AST for file: \"%s\"\n", fname);
+        fprintf(stderr, "AST for file: \"%s\"\n", fname);
     else
-        printf("AST for stdin\n");
-
+        fprintf(stderr, "AST for stdin\n");
+    yyparse();
     if (ast_root)
     {
         cnode_debug_print(ast_root, 1);
     }
-    else
-        fprintf(stdout, "Syntax Error\n");
+    else exit(1);
 }
 
 void print_help() {

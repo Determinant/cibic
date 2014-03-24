@@ -89,7 +89,7 @@ CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr);
 
 CNode *cnode_create_identifier(char *val);
 CNode *cnode_create_int_const(int val);
-CNode *cnode_create_char_const(int val);
+CNode *cnode_create_char_const(char *val);
 CNode *cnode_create_str_const(char *val);
 
 void cnode_debug_print(CNode *ast, int fancy);
