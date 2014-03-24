@@ -14,8 +14,8 @@
 %token OPT_OR OPT_AND OPT_EQ OPT_NE OPT_LE OPT_GE OPT_SHL OPT_SHR OPT_INC OPT_DEC OPT_PTR
 %token ASS_MUL ASS_DIV ASS_MOD ASS_ADD ASS_SUB ASS_SHL ASS_SHR ASS_AND ASS_XOR ASS_OR
 %token UNKNOWN
-%type<intval> INT_CONST CHAR_CONST
-%type<strval> IDENTIFIER STR_CONST
+%type<intval> INT_CONST
+%type<strval> IDENTIFIER STR_CONST CHAR_CONST
 %type<intval> assignment_operator equality_operator relational_operator shift_operator additive_operator multiplicative_operator unary_operator struct_or_union
 %type<cnode> expression assignment_expression constant_expression logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression type_name unary_expression postfix_expression identifier primary_expression arguments postfix type_specifier program declaration function_definition parameters declarators init_declarators init_declarator initializer array_initializer struct_fields struct_field plain_declaration  declarator_array plain_declarator expression_statement compound_statement statement comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator prog_list
 %start program

@@ -249,7 +249,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             break;
         case CHAR:
             type = "char";
-            aptr += sprintf(abuff, "%c", ast->rec.intval);
+            aptr += sprintf(abuff, "%s", ast->rec.strval);
             break;
         case STR:
             type = "str";

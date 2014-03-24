@@ -64,8 +64,8 @@ digit [0-9]
     return INT_CONST; 
 }
 
-'{letter}'                                  { 
-    yylval.intval = *(yytext);
+'([^\'\\]|\\.)'                                  { 
+    yylval.strval = strdup(yytext);
     return CHAR_CONST; 
 }
 
