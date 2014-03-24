@@ -64,12 +64,12 @@ digit [0-9]
     return INT_CONST; 
 }
 
-'([^\'\\]|\\.)'                                  { 
+'([^\'\\]|\\.|\\[0-7][0-7]?[0-7]?|\\[xX][0-9a-fA-F]+)' { 
     yylval.strval = strdup(yytext);
     return CHAR_CONST; 
 }
 
-\"[^\n\"]*\"                                {
+\"[^\n\"]*\" {
     yylval.strval = strndup(yytext + 1, strlen(yytext) - 2);
     return STR_CONST; 
 }
@@ -79,6 +79,7 @@ digit [0-9]
 "=="                                        { return OPT_EQ; }
 "!="                                        { return OPT_NE; }
 "<="                                        { return OPT_LE; }
+">="                                        { return OPT_GE; }
 "<<"                                        { return OPT_SHL; }
 ">>"                                        { return OPT_SHR; }
 "++"                                        { return OPT_INC; }

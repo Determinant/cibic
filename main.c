@@ -5,6 +5,7 @@
 
 extern int yyparse();
 extern FILE *yyin;
+char *fname;
 
 int yywrap() {
     return 1;
@@ -15,10 +16,17 @@ int yyerror(char *s) {
 
 void print_ast() {
     yyparse();
-    if (ast_root)
-        cnode_debug_print(ast_root, 1);
+    if (fname)
+        printf("AST for file: \"%s\"\n", fname);
     else
-        fprintf(stderr, "Syntax Error\n");
+        printf("AST for stdin\n");
+
+    if (ast_root)
+    {
+        cnode_debug_print(ast_root, 1);
+    }
+    else
+        fprintf(stdout, "Syntax Error\n");
 }
 
 void print_help() {
@@ -51,7 +59,8 @@ int main(int argc, char **argv) {
     }
     if (optind == argc - 1)
     {
-        yyin = fopen(argv[argc - 1], "r");
+        fname = argv[argc - 1];
+        yyin = fopen(fname, "r");
         if (!yyin)
         {
             fprintf(stderr, "Error while opening file.");
@@ -59,7 +68,10 @@ int main(int argc, char **argv) {
         }
     }
     else if (optind == argc)
+    {
+        fname = NULL;
         yyin = stdin;
+    }
     else
     {
         fprintf(stderr, "Only one source file is exepected.\n");
