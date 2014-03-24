@@ -1,5 +1,6 @@
 #ifndef AST_H
 #define AST_H
+#include <stdarg.h>
 
 #define EXP_POSTFIX     1024
 #define POSTFIX_ARR     1025
@@ -68,7 +69,6 @@ typedef struct CNode {
     } loc;
 } CNode;
 
-void cnode_init();
 CNode *cnode_create_ast(CNode *wrapped);
 CNode *cnode_create_nop();
 CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap); 

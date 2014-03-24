@@ -1,15 +1,11 @@
 #include <stdlib.h>
 #include <assert.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include "ast.h"
 #include "cibic.tab.h"
 #define NEW_CNODE ((CNode *)malloc(sizeof(CNode)))
 
 CNode *ast_root;
-
-void cnode_init() {
-}
 
 void cnode_reverse_chd(CNode *node) {
     static CNode *chdn[MAX_CHDN];

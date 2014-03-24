@@ -1,17 +1,19 @@
 all: cibic
 
 run: 
-	./cibic
+	./cibic --ast
 
-debug:
+db:
 	gdb cibic
 
-cibic: lex.yy.o cibic.tab.o ast.o
-	gcc -o cibic lex.yy.o cibic.tab.o ast.o
+cibic: lex.yy.o cibic.tab.o ast.o main.o
+	gcc -o cibic lex.yy.o cibic.tab.o ast.o main.o
 lex.yy.o: lex.yy.c
 	gcc -c lex.yy.c
 cibic.tab.o: cibic.tab.c
 	gcc -c cibic.tab.c
+main.o: main.c
+	gcc -c main.c -g -Wall -Wextra
 ast.o:	ast.c
 	gcc -c ast.c -g -Wall -Wextra -DCNODE_DEBUG
 lex.yy.c: cibic.l

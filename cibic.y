@@ -17,10 +17,7 @@
 %type<intval> INT_CONST CHAR_CONST
 %type<strval> IDENTIFIER STR_CONST
 %type<intval> assignment_operator equality_operator relational_operator shift_operator additive_operator multiplicative_operator unary_operator struct_or_union
-%type<cnode> expression assignment_expression constant_expression
-%type<cnode> logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression type_name
-%type<cnode> unary_expression postfix_expression identifier primary_expression arguments postfix type_specifier program declaration function_definition parameters declarators init_declarators init_declarator initializer array_initializer struct_fields struct_field plain_declaration  declarator_array plain_declarator expression_statement compound_statement statement
-%type<cnode> comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator prog_list
+%type<cnode> expression assignment_expression constant_expression logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression type_name unary_expression postfix_expression identifier primary_expression arguments postfix type_specifier program declaration function_definition parameters declarators init_declarators init_declarator initializer array_initializer struct_fields struct_field plain_declaration  declarator_array plain_declarator expression_statement compound_statement statement comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator prog_list
 %start program
 %%
 program
@@ -324,26 +321,3 @@ primary_expression
 identifier
     : IDENTIFIER { $$ = cnode_create_identifier($1); }
 %%
-int yywrap() {
-    return 1;
-}
-
-int yyerror(char *s) {
-}
-
-extern FILE *yyin;
-void test_ast() {
-    yyparse();
-    cnode_init();
-    if (ast_root)
-        cnode_debug_print(ast_root, 1);
-    else
-        fprintf(stderr, "Syntax Error\n");
-}
-
-int main() {
-    int ret;
-    yyin = fopen("in.c", "r");
-    test_ast();
-    return 0;
-}
