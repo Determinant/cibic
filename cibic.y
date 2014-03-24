@@ -303,7 +303,7 @@ postfix
         $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_list_wrap(ARGS, $2)); 
     }
     | '(' ')' { 
-        $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_list_wrap(cnode_create_nop()));
+        $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_list_wrap(ARGS, cnode_create_nop()));
     }
     | '.' identifier { $$ = cnode_create_exp(POSTFIX_DOT, 1, $2); }
     | OPT_PTR identifier { $$ = cnode_create_exp(POSTFIX_PTR, 1, $2); }

@@ -234,7 +234,6 @@ char *cnode_debug_type_repr(CNode *ast) {
         case DECLS:     type = "prg_decls"; break;
         case FUNCS:     type = "prg_funcs"; break;
         case DECL:      type = "decl"; break;
-        case DECLR:     type = "declr"; break;
         case INIT_DECLR:  type = "init_declr"; break;
         case PLAIN_DECL:  type = "p_decl"; break;
         case TYPE_NAME:  type = "type_name"; break;
@@ -260,12 +259,13 @@ char *cnode_debug_type_repr(CNode *ast) {
             type = "str";
             aptr += sprintf(abuff, "\"%s\"", ast->rec.strval);
             break;
+        case FIELD: type = "field"; break;
         case NOP: type = "nop"; break;
         case EXP: 
         case INITR: 
         case TYPE_SPEC: 
-        case FIELD: 
         case STMT:
+        case DECLR:
             type = NULL; break;
     }
     if (ast->type == EXP)
@@ -334,6 +334,7 @@ char *cnode_debug_type_repr(CNode *ast) {
         {
             case DECLR_FUNC: type = "func"; break;
             case DECLR_ARR: type = "arr"; break;
+            case '*': type = "*"; break;
             default: assert(0);
         }
     }
@@ -361,7 +362,12 @@ char *cnode_debug_type_repr(CNode *ast) {
             default: assert(0);
         }
     }
-    else assert(type);
+    else 
+    {
+        if (type == NULL)
+            puts("");
+        assert(type);
+    }
     if (aptr == abuff)
         sprintf(buffer, "%s", type);
     else
