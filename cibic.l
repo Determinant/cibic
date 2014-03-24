@@ -4,7 +4,7 @@
 
 letter [a-zA-Z_$]
 digit [0-9]
-%s IN_BLOCK_COMMENT IN_INLINE_COMMENT
+%s IN_BLOCK_COMMENT IN_INLINE_COMMENT IN_DIRECTIVE
 %%
 
 <INITIAL>{
@@ -21,6 +21,14 @@ digit [0-9]
 "//"    BEGIN(IN_INLINE_COMMENT);
 }
 <IN_INLINE_COMMENT>{
+\n      BEGIN(INITIAL);
+[^\n]+ 
+}
+
+<INITIAL>{
+"#"    BEGIN(IN_INLINE_COMMENT);
+}
+<IN_DIRECTIVE>{
 \n      BEGIN(INITIAL);
 [^\n]+ 
 }

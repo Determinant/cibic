@@ -20,21 +20,27 @@
 %type<cnode> expression assignment_expression constant_expression
 %type<cnode> logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression type_name
 %type<cnode> unary_expression postfix_expression identifier primary_expression arguments postfix type_specifier program declaration function_definition parameters declarators init_declarators init_declarator initializer array_initializer struct_fields struct_field plain_declaration  declarator_array plain_declarator expression_statement compound_statement statement
-%type<cnode> comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator
+%type<cnode> comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator prog_list
+%start program
 %%
 program
-    : declaration           { ast_root = $1; }
-    | function_definition   { ast_root = $1; }
-    | program declaration   { ast_root = cnode_append(ast_root, $2); }
-    | program function_definition { ast_root = cnode_append(ast_root, $2); }
+    : prog_list { ast_root = cnode_list_wrap(PROG, $1); }
+
+prog_list
+    : declaration
+    | function_definition
+    | prog_list declaration         { $$ = cnode_list_append($1, $2); }
+    | prog_list function_definition { $$ = cnode_list_append($1, $2); }
 
 declaration
     : type_specifier ';' { $$ = cnode_create_decl($1, cnode_create_nop()); } 
-    | type_specifier init_declarators ';' { $$ = cnode_create_decl($1, $2); }
+    | type_specifier init_declarators ';' { 
+        $$ = cnode_create_decl($1, cnode_list_wrap(INIT_DECLRS, $2)); 
+    }
 
 function_definition
     : type_specifier plain_declarator '(' parameters ')' compound_statement {
-        $$ = cnode_create_func($1, $2, cnode_create_params($4), $6);
+        $$ = cnode_create_func($1, $2, cnode_list_wrap(PARAMS, $4), $6);
     }
     | type_specifier plain_declarator '(' ')' compound_statement {
         $$ = cnode_create_func($1, $2, cnode_create_nop(), $5);
@@ -42,15 +48,15 @@ function_definition
 
 parameters
     : plain_declaration
-    | parameters ',' plain_declaration { $$ = cnode_append($1, $3); }
+    | parameters ',' plain_declaration { $$ = cnode_list_append($1, $3); }
 
 declarators
     : declarator
-    | declarators ',' declarator { $$ = cnode_append($1, $3); }
+    | declarators ',' declarator { $$ = cnode_list_append($1, $3); }
 
 init_declarators
     : init_declarator
-    | init_declarators ',' init_declarator { $$ = cnode_append($1, $3); }
+    | init_declarators ',' init_declarator { $$ = cnode_list_append($1, $3); }
 
 init_declarator
     : declarator { $$ = cnode_create_init_declr($1, cnode_create_nop()); }
@@ -62,7 +68,7 @@ initializer
 
 array_initializer
     : initializer
-    | array_initializer ',' initializer { $$ = cnode_append($1, $3); }
+    | array_initializer ',' initializer { $$ = cnode_list_append($1, $3); }
 
 type_specifier
     : KW_VOID { $$ = cnode_create_type_spec(KW_VOID, 0); }
@@ -74,9 +80,11 @@ type_specifier
 
 struct_fields
     : struct_field
-    | struct_fields struct_field { $$ = cnode_append($1, $2); }
+    | struct_fields struct_field { $$ = cnode_list_append($1, $2); }
 struct_field
-    : type_specifier declarators ';' { $$ = cnode_create_struct_field($1, $2); }
+    : type_specifier declarators ';' { 
+        $$ = cnode_create_struct_field($1, cnode_list_wrap(DECLRS, $2));
+    }
 
 struct_or_union
     : KW_STRUCT { $$ = KW_STRUCT; }
@@ -111,17 +119,17 @@ expression_statement
 
 compound_statement
     : '{' comp_decls comp_stmts '}' { 
-        $$ = cnode_create_stmt(STMT_COMP, 2, cnode_create_comp_decls($2), 
-                                             cnode_create_comp_stmts($3)); 
+        $$ = cnode_create_stmt(STMT_COMP, 2, cnode_list_wrap(COMP_DECLS, $2), 
+                                             cnode_list_wrap(COMP_STMTS, $3)); 
     }
 
 comp_decls
     : { $$ = cnode_create_nop(); }
-    | comp_decls declaration { $$ = cnode_append($1, $2); }
+    | comp_decls declaration { $$ = cnode_list_append($1, $2); }
 
 comp_stmts
     : { $$ = cnode_create_nop(); }
-    | comp_stmts statement { $$ = cnode_append($1, $2); }
+    | comp_stmts statement { $$ = cnode_list_append($1, $2); }
 
 selection_statement
     : KW_IF '(' expression ')' statement { 
@@ -286,7 +294,7 @@ postfix_expression
 postfix
     : '[' expression ']' { $$ = cnode_create_exp(POSTFIX_ARR, 1, $2); }
     | '(' arguments ')' { $$ = cnode_create_exp(POSTFIX_CALL, 1, 
-                                                 cnode_create_args($2)); }
+                                                 cnode_list_wrap(ARGS, $2)); }
     | '(' ')' { $$ = cnode_create_exp(POSTFIX_CALL, 1, cnode_create_nop()); }
     | '.' identifier { $$ = cnode_create_exp(POSTFIX_DOT, 1, $2); }
     | OPT_PTR identifier { $$ = cnode_create_exp(POSTFIX_PTR, 1, $2); }
@@ -295,7 +303,7 @@ postfix
 
 arguments
     : assignment_expression
-    | arguments ',' assignment_expression { $$ = cnode_append($1, $3); }
+    | arguments ',' assignment_expression { $$ = cnode_list_append($1, $3); }
 
 primary_expression
     : identifier
@@ -326,7 +334,7 @@ void test_ast() {
 
 int main() {
     int ret;
-    yyin = fopen("in", "r");
+    yyin = fopen("in.c", "r");
     test_ast();
     return 0;
 }

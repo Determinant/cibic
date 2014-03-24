@@ -27,11 +27,15 @@ typedef struct CNode {
         FUNC_DEF,
         DECL, /* declaration */
         DECLR, /* declarator */
+        DECLRS,
         INIT_DECLR, 
+        INIT_DECLRS,
         INITR, /* initializer */
         TYPE_SPEC,
         FIELD, /* struct-or-union field */
         PLAIN_DECL,
+        DECLS,
+        FUNCS,
 
         /* Statments */
         STMT,
@@ -65,7 +69,8 @@ typedef struct CNode {
 void cnode_init();
 CNode *cnode_create_nop();
 CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap); 
-CNode *cnode_append(CNode *node, CNode *tail);
+CNode *cnode_list_append(CNode *list, CNode *tail);
+CNode *cnode_list_wrap(int type, CNode *list);
 
 CNode *cnode_create_exp(int exp_type, int pnum, ...);
 CNode *cnode_create_type_spec(int spec_type, int pnum, ...);
@@ -78,10 +83,6 @@ CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *s
 CNode *cnode_create_init_declr(CNode *declr, CNode *initr);
 CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs);
 CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr);
-CNode *cnode_create_comp_decls(CNode *decls);
-CNode *cnode_create_comp_stmts(CNode *stmts);
-CNode *cnode_create_args(CNode *arg_list);
-CNode *cnode_create_params(CNode *plist);
 
 CNode *cnode_create_identifier(char *val);
 CNode *cnode_create_int_const(int val);

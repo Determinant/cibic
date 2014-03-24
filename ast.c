@@ -23,28 +23,26 @@ CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap) {
     CNode *exp = NEW_CNODE;
     exp->type = type;
     exp->rec.subtype = subtype;
-    exp->next = NULL;
+    exp->next = exp->chd = NULL;
     for (i = 0; i < pnum; i++)
     {
         CNode *subexp = va_arg(ap, CNode*);
-        if (subexp->next)
-        {
-            puts("asdf");
-        }
+#ifdef CNODE_DEBUG
         assert(subexp->next == NULL);
+#endif
         subexp->next = exp->chd;
         exp->chd = subexp;
     }
     return exp;
 }
 
-CNode *cnode_append(CNode *node, CNode *tail) {
-    if (node->type == NOP) 
+CNode *cnode_list_append(CNode *list, CNode *tail) {
+    if (list->type == NOP) 
     {
-        free(node);
+        free(list);
         return tail;
     }
-    tail->next = node; 
+    tail->next = list; 
     return tail;
 }
 
@@ -123,22 +121,34 @@ CNode *cnode_create_initr(int initr_type, CNode *body) {
     initr->type = INITR;
     initr->rec.subtype = initr_type;
     initr->chd = body;
+    initr->next = NULL;
     return initr;
 }
 
 CNode *cnode_create_decl(CNode *type, CNode *init_declrs) {
     CNode *decl = NEW_CNODE;
+#ifdef CNODE_DEBUG
+    assert(type->next == NULL);
+    assert(init_declrs->next == NULL);
+#endif
     decl->type = DECL;
-    decl->chd = type;
-    type->next = init_declrs;
+    decl->next = NULL;
+    decl->chd = init_declrs;
+    init_declrs->next = type;
     return decl;
 }
 
 CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *stmt) {
     CNode *func = NEW_CNODE;
+#ifdef CNODE_DEBUG
+    assert(type->next == NULL);
+    assert(plain_decl->next == NULL);
+    assert(params->next == NULL);
+    assert(stmt->next == NULL);
+#endif
     func->type = FUNC_DEF;
-    func->chd = stmt;
     func->next = NULL;
+    func->chd = stmt;
     stmt->next = params;
     params->next = plain_decl;
     plain_decl->next = type;
@@ -147,7 +157,12 @@ CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *s
 
 CNode *cnode_create_init_declr(CNode *declr, CNode *initr) {
     CNode *init_declr = NEW_CNODE;
+#ifdef CNODE_DEBUG
+    assert(declr->next == NULL);
+    assert(initr->next == NULL);
+#endif
     init_declr->type = INIT_DECLR;
+    init_declr->next = NULL;
     init_declr->chd = initr;
     initr->next = declr;
     return init_declr;
@@ -155,7 +170,12 @@ CNode *cnode_create_init_declr(CNode *declr, CNode *initr) {
 
 CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs) {
     CNode *field = NEW_CNODE;
+#ifdef CNODE_DEBUG
+    assert(type_spec->next == NULL);
+    assert(declrs->next == NULL);
+#endif
     field->type = FIELD;
+    field->next = NULL;
     field->chd = declrs;
     declrs->next = type_spec;
     return field;
@@ -163,57 +183,43 @@ CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs) {
 
 CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr) {
     CNode *pdecl = NEW_CNODE;
+#ifdef CNODE_DEBUG
+    assert(type_spec->next == NULL);
+    assert(declr->next == NULL);
+#endif
     pdecl->type = PLAIN_DECL;
+    pdecl->next = NULL;
     pdecl->chd = declr;
     declr->next = type_spec;
     return pdecl;
 }
 
-CNode *cnode_create_comp_decls(CNode *decls) {
-    CNode *comp_decls = NEW_CNODE;
-    comp_decls->type = COMP_DECLS;
-    comp_decls->chd = decls;
-    return comp_decls;
-}
-
-CNode *cnode_create_comp_stmts(CNode *stmts) {
-    CNode *comp_stmts = NEW_CNODE;
-    comp_stmts->type = COMP_STMTS;
-    comp_stmts->chd = stmts;
-    comp_stmts->next = NULL;
-    return comp_stmts;
-}
-
-CNode *cnode_create_args(CNode *arg_list) {
-    CNode *args = NEW_CNODE;
-    args->type = ARGS;
-    args->chd = arg_list;
-    args->next = NULL;
-    return args;
-}
-
-CNode *cnode_create_params(CNode *plist) {
-    CNode *params = NEW_CNODE;
-    params->type = PARAMS;
-    params->chd = plist;
-    params->next = NULL;
-    return params;
+CNode *cnode_list_wrap(int type, CNode *list) {
+    CNode *wlist = NEW_CNODE;
+    wlist->type = type;
+    wlist->next = NULL;
+    wlist->chd = list;
+    return wlist;
 }
 
 char *cnode_debug_type_repr(CNode *ast) {
-    static buffer[1024];
-    char *type = NULL;
+    static char buffer[1024];
+    char *type;
     switch (ast->type)
     {
         case PROG:      type = "prog"; break;
         case FUNC_DEF:  type = "func"; break;
+        case DECLS:     type = "prg_decls"; break;
+        case FUNCS:     type = "prg_funcs"; break;
         case DECL:      type = "decl"; break;
         case DECLR:     type = "declr"; break;
         case INIT_DECLR:  type = "init_declr"; break;
         case PLAIN_DECL:  type = "p_decl"; break;
         case TYPE_NAME:  type = "type_name"; break;
-        case COMP_STMTS: type = "stmts"; break;
-        case COMP_DECLS: type = "decls"; break;
+        case COMP_STMTS: type = "blk_stmts"; break;
+        case COMP_DECLS: type = "blk_decls"; break;
+        case DECLRS: type = "declrs"; break;
+        case INIT_DECLRS: type = "i_declrs"; break;
         case ARGS:  type = "args"; break;
         case PARAMS: type = "params"; break;
         case ID:  type = "id"; break;
@@ -221,6 +227,12 @@ char *cnode_debug_type_repr(CNode *ast) {
         case CHAR:  type = "char"; break;
         case STR:  type = "str"; break;
         case NOP: type = "nop"; break;
+        case EXP: 
+        case INITR: 
+        case TYPE_SPEC: 
+        case FIELD: 
+        case STMT:
+            type = NULL; break;
     }
     if (ast->type == EXP)
     {
