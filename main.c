@@ -19,7 +19,7 @@ void print_error(char *err_msg, int row, int col) {
     fprintf(stderr, "%d:%d: %s\n%s\n", 
             row, col, err_msg, linebuff);
     while (--col) putchar(' ');
-    putchar('^');
+    puts("^");
 }
 
 int yyerror(char *err_msg) {

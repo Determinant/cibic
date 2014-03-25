@@ -9,11 +9,11 @@
     struct CNode *cnode;
 }
 %error-verbose
-%token IDENTIFIER INT_CONST CHAR_CONST STR_CONST
-%token KW_VOID KW_CHAR KW_INT KW_STRUCT KW_UNION KW_IF KW_ELSE KW_WHILE
-%token KW_FOR KW_CONT KW_BREAK KW_RET KW_SIZEOF
-%token OPT_OR OPT_AND OPT_EQ OPT_NE OPT_LE OPT_GE OPT_SHL OPT_SHR OPT_INC OPT_DEC OPT_PTR
-%token ASS_MUL ASS_DIV ASS_MOD ASS_ADD ASS_SUB ASS_SHL ASS_SHR ASS_AND ASS_XOR ASS_OR
+%token IDENTIFIER "identifier" INT_CONST "integer constant" CHAR_CONST "character constant" STR_CONST "string constant"
+%token KW_VOID "void" KW_CHAR "char" KW_INT "int" KW_STRUCT "struct" KW_UNION "union" KW_IF "if" KW_ELSE "else" KW_WHILE "while"
+%token KW_FOR "for" KW_CONT "continue" KW_BREAK "break" KW_RET "ret" KW_SIZEOF "sizeof"
+%token OPT_OR "||" OPT_AND "&&" OPT_EQ "==" OPT_NE "!=" OPT_LE "<=" OPT_GE ">=" OPT_SHL "<<" OPT_SHR ">>" OPT_INC "++" OPT_DEC "--" OPT_PTR "->"
+%token ASS_MUL "*=" ASS_DIV "/=" ASS_MOD "%=" ASS_ADD "+=" ASS_SUB "-=" ASS_SHL "<<=" ASS_SHR ">>=" ASS_AND "&=" ASS_XOR "^=" ASS_OR "|="
 %token UNKNOWN
 %type<intval> INT_CONST
 %type<strval> IDENTIFIER STR_CONST CHAR_CONST
