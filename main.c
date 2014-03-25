@@ -65,7 +65,7 @@ int main(int argc, char **argv) {
         {
             case 0: break;
             case 'a': mode = PRINT_AST; break;
-            case 'h': mode = PRINT_HELP; break;
+            case 'h': print_help(); return 0;
         }
     }
     if (optind == argc - 1)
