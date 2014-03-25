@@ -14,6 +14,7 @@ int yywrap() {
 
 int yyerror(char *s) {
     fprintf(stderr, "%s\n", s);
+    return 0;
 }
 
 void print_ast() {
@@ -30,6 +31,16 @@ void print_ast() {
 }
 
 void print_help() {
+    fprintf(stderr,
+            "CBIC -- C Implemented Bare and Ingenuous Compiler\n\n"
+	        "Copyright (C) 2014 Ted Yin\n"
+	        "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n"
+	        "There is NO WARRANTY, to the extent permitted by law.\n"
+	        "Usage: [options] filename\n"
+            "Options:\n" 
+            "\t --ast \t\t Print AST Construction\n"
+            "\t --help \t Show this info\n"
+        );
 }
 
 static struct option lopts[] = {
@@ -44,7 +55,7 @@ enum {
 } mode = PRINT_HELP;
 
 int main(int argc, char **argv) {
-    int option_index = 0, i;
+    int option_index = 0;
     while (1)
     {
         int c = getopt_long(argc, argv, "ah", lopts, &option_index);
@@ -63,7 +74,7 @@ int main(int argc, char **argv) {
         yyin = fopen(fname, "r");
         if (!yyin)
         {
-            fprintf(stderr, "Error while opening file.");
+            fprintf(stderr, "Error while opening file.\n");
             return 1;
         }
     }
