@@ -43,7 +43,7 @@ void print_ast() {
 
 void print_help() {
     fprintf(stderr,
-            "CBIC -- C Implemented Bare and Ingenuous Compiler\n\n"
+            "CBIC: C Implemented Bare and Ingenuous Compiler\n\n"
 	        "Copyright (C) 2014 Ted Yin\n"
 	        "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n"
 	        "There is NO WARRANTY, to the extent permitted by law.\n"
