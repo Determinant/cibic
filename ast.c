@@ -55,12 +55,12 @@ CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap) {
 }
 
 CNode *cnode_list_append(CNode *list, CNode *tail) {
-    if (list->type == NOP) 
+    if (list->type == NOP)
     {
         free(list);
         return tail;
     }
-    tail->next = list; 
+    tail->next = list;
     return tail;
 }
 
@@ -240,11 +240,11 @@ char *cnode_debug_type_repr(CNode *ast) {
         case ARGS:  type = "args"; break;
         case PARAMS: type = "params"; break;
         case ID:
-            type = "id"; 
+            type = "id";
             aptr += sprintf(abuff, "%s", ast->rec.strval);
             break;
         case INT:
-            type = "int"; 
+            type = "int";
             aptr += sprintf(abuff, "%d", ast->rec.intval);
             break;
         case CHAR:
@@ -258,9 +258,9 @@ char *cnode_debug_type_repr(CNode *ast) {
         case FIELD: type = "field"; break;
         case FIELDS: type = "fields"; break;
         case NOP: type = "nop"; break;
-        case EXP: 
-        case INITR: 
-        case TYPE_SPEC: 
+        case EXP:
+        case INITR:
+        case TYPE_SPEC:
         case STMT:
         case DECLR:
             type = NULL; break;
@@ -359,7 +359,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             default: assert(0);
         }
     }
-    else 
+    else
     {
         if (type == NULL)
             puts("");
@@ -371,7 +371,7 @@ char *cnode_debug_type_repr(CNode *ast) {
     else
     {
         *aptr = '\0';
-        sprintf(buffer, "%s:%s(%d:%d)", type, abuff, 
+        sprintf(buffer, "%s:%s(%d:%d)", type, abuff,
                 ast->loc.row, ast->loc.col);
     }
     return buffer;

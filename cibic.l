@@ -45,7 +45,7 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 }
 <IN_INLINE_COMMENT>{
 \n      { NEW_LINE_USER_ACTION; BEGIN(INITIAL); }
-[^\n]+ 
+[^\n]+
 }
 
 <INITIAL>{
@@ -53,7 +53,7 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 }
 <IN_DIRECTIVE>{
 \n      { NEW_LINE_USER_ACTION; BEGIN(INITIAL); }
-[^\n]+ 
+[^\n]+
 }
 
 "void"                                      { return KW_VOID; }
@@ -70,12 +70,12 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 "return"                                    { return KW_RET; }
 "sizeof"                                    { return KW_SIZEOF; }
 
-{letter}({letter}|{digit})*                 { 
-    yylval.strval = strdup(yytext); 
-    return IDENTIFIER; 
+{letter}({letter}|{digit})*                 {
+    yylval.strval = strdup(yytext);
+    return IDENTIFIER;
 }
 
-({digit}+)|(0[xX][0-9a-fA-F]+)              { 
+({digit}+)|(0[xX][0-9a-fA-F]+)              {
     if (*yytext == '0')
     {
         if (*(yytext + 1) == 'x' || *(yytext + 1) == 'X')
@@ -84,12 +84,12 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
             sscanf(yytext, "%o", &yylval.intval);
     }
     else yylval.intval = atoi(yytext);
-    return INT_CONST; 
+    return INT_CONST;
 }
 
-'{char}' { 
+'{char}' {
     yylval.strval = strdup(yytext);
-    return CHAR_CONST; 
+    return CHAR_CONST;
 }
 
 '{char}? {
@@ -99,7 +99,7 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 
 \"{string}\" {
     yylval.strval = strndup(yytext + 1, strlen(yytext) - 2);
-    return STR_CONST; 
+    return STR_CONST;
 }
 
 \"{string}? {

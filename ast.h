@@ -32,7 +32,7 @@ typedef struct CNode {
         DECL, /* declaration */
         DECLR, /* declarator */
         DECLRS,
-        INIT_DECLR, 
+        INIT_DECLR,
         INIT_DECLRS,
         INITR, /* initializer */
         TYPE_SPEC,
@@ -74,7 +74,7 @@ typedef struct CNode {
 CNode *cnode_add_loc(CNode *node, YYLTYPE loc);
 CNode *cnode_create_ast(CNode *wrapped);
 CNode *cnode_create_nop();
-CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap); 
+CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap);
 CNode *cnode_list_append(CNode *list, CNode *tail);
 CNode *cnode_list_wrap(int type, CNode *list);
 

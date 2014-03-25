@@ -14,11 +14,12 @@
 %token KW_FOR "for" KW_CONT "continue" KW_BREAK "break" KW_RET "ret" KW_SIZEOF "sizeof"
 %token OPT_OR "||" OPT_AND "&&" OPT_EQ "==" OPT_NE "!=" OPT_LE "<=" OPT_GE ">=" OPT_SHL "<<" OPT_SHR ">>" OPT_INC "++" OPT_DEC "--" OPT_PTR "->"
 %token ASS_MUL "*=" ASS_DIV "/=" ASS_MOD "%=" ASS_ADD "+=" ASS_SUB "-=" ASS_SHL "<<=" ASS_SHR ">>=" ASS_AND "&=" ASS_XOR "^=" ASS_OR "|="
-%token UNKNOWN
+%token UNKNOWN "stray character"
+%token END 0 "end of file"
 %type<intval> INT_CONST
 %type<strval> IDENTIFIER STR_CONST CHAR_CONST
-%type<intval> assignment_operator equality_operator relational_operator shift_operator additive_operator multiplicative_operator unary_operator struct_or_union
-%type<cnode> expression assignment_expression constant_expression logical_or_expression logical_and_expression inclusive_or_expression exclusive_or_expression and_expression equality_expression relational_expression shift_expression additive_expression multiplicative_expression cast_expression type_name unary_expression postfix_expression identifier primary_expression arguments postfix type_specifier program declaration function_definition parameters declarators init_declarators init_declarator initializer array_initializer struct_fields struct_field plain_declaration  declarator_array plain_declarator expression_statement compound_statement statement comp_decls comp_stmts selection_statement iteration_statement jump_statement optional_exp declarator prog_list
+%type<intval> additive_operator assignment_operator equality_operator multiplicative_operator relational_operator shift_operator struct_or_union unary_operator
+%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarator_array declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration plain_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression
 %start program
 %%
 program
@@ -33,13 +34,13 @@ prog_list
 declaration
     : type_specifier ';' {
         $$ = cnode_add_loc(cnode_create_decl(
-                            $1, 
+                            $1,
                             cnode_list_wrap(INIT_DECLRS, cnode_create_nop())), @$);
     }
-    | type_specifier init_declarators ';' { 
+    | type_specifier init_declarators ';' {
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
-                            cnode_add_loc(cnode_list_wrap(INIT_DECLRS, $2), @2)), @$); 
+                            cnode_add_loc(cnode_list_wrap(INIT_DECLRS, $2), @2)), @$);
     }
 
 function_definition
@@ -50,7 +51,7 @@ function_definition
     }
     | type_specifier plain_declarator '(' ')' compound_statement {
         $$ = cnode_add_loc(cnode_create_func(
-                            $1, $2, 
+                            $1, $2,
                             cnode_list_wrap(PARAMS, cnode_create_nop()), $5), @$);
     }
 
@@ -83,21 +84,21 @@ type_specifier
     : KW_VOID { $$ = cnode_add_loc(cnode_create_type_spec(KW_VOID, 0), @$); }
     | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); }
     | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); }
-    | struct_or_union identifier '{' struct_fields '}' { 
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$); 
+    | struct_or_union identifier '{' struct_fields '}' {
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$);
     }
     | struct_or_union '{' struct_fields '}'            {
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $3), @3)), @$); 
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $3), @3)), @$);
     }
-    | struct_or_union identifier { 
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_create_nop()), @$); 
+    | struct_or_union identifier {
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_create_nop()), @$);
     }
 
 struct_fields
     : struct_field
     | struct_fields struct_field { $$ = cnode_list_append($1, $2); }
 struct_field
-    : type_specifier declarators ';' { 
+    : type_specifier declarators ';' {
         $$ = cnode_add_loc(
                 cnode_create_struct_field($1,
                                         cnode_add_loc(cnode_list_wrap(DECLRS, $2), @2)), @$);
@@ -111,22 +112,22 @@ plain_declaration
     : type_specifier declarator { $$ = cnode_add_loc(cnode_create_plain_decl($1, $2), @$); }
 
 declarator
-    : plain_declarator '(' ')' { 
+    : plain_declarator '(' ')' {
         $$ = cnode_add_loc(cnode_create_declr(
-                            DECLR_FUNC, 2, $1, 
+                            DECLR_FUNC, 2, $1,
                             cnode_list_wrap(PARAMS, cnode_create_nop())), @$);
     }
     | plain_declarator '(' parameters ')' {
         $$ = cnode_add_loc(cnode_create_declr(
-                            DECLR_FUNC, 2, $1, 
+                            DECLR_FUNC, 2, $1,
                             cnode_add_loc(cnode_list_wrap(PARAMS, $3), @3)), @$);
     }
     | declarator_array
 
 declarator_array
     : plain_declarator
-    | declarator_array '[' constant_expression ']' { 
-        $$ = cnode_add_loc(cnode_create_declr(DECLR_ARR, 2, $1, $3), @$); 
+    | declarator_array '[' constant_expression ']' {
+        $$ = cnode_add_loc(cnode_create_declr(DECLR_ARR, 2, $1, $3), @$);
     }
 
 plain_declarator
@@ -146,10 +147,10 @@ expression_statement
     | expression ';'    { $$ = cnode_add_loc(cnode_create_stmt(STMT_EXP, 1, $1), @$); }
 
 compound_statement
-    : '{' comp_decls comp_stmts '}' { 
+    : '{' comp_decls comp_stmts '}' {
         $$ = cnode_add_loc(
-                cnode_create_stmt(STMT_COMP, 2, cnode_add_loc(cnode_list_wrap(COMP_DECLS, $2), @2), 
-                                                cnode_add_loc(cnode_list_wrap(COMP_STMTS, $3), @3)), @$); 
+                cnode_create_stmt(STMT_COMP, 2, cnode_add_loc(cnode_list_wrap(COMP_DECLS, $2), @2),
+                                                cnode_add_loc(cnode_list_wrap(COMP_STMTS, $3), @3)), @$);
     }
 
 comp_decls
@@ -161,11 +162,11 @@ comp_stmts
     | comp_stmts statement { $$ = cnode_list_append($1, $2); }
 
 selection_statement
-    : KW_IF '(' expression ')' statement { 
+    : KW_IF '(' expression ')' statement {
         $$ = cnode_add_loc(
-                cnode_create_stmt(STMT_IF, 3, $3, $5, cnode_create_nop()), @$); 
+                cnode_create_stmt(STMT_IF, 3, $3, $5, cnode_create_nop()), @$);
     }
-    | KW_IF '(' expression ')' statement KW_ELSE statement { 
+    | KW_IF '(' expression ')' statement KW_ELSE statement {
         $$ = cnode_add_loc(
                 cnode_create_stmt(STMT_IF, 3, $3, $5, $7), @$);
     }
@@ -189,7 +190,7 @@ jump_statement
 
 expression
     : assignment_expression
-    | expression ',' assignment_expression { 
+    | expression ',' assignment_expression {
         @$ = @2;
         $$ = cnode_add_loc(cnode_create_exp(',', 2, $1, $3), @2); }
 
@@ -323,17 +324,17 @@ unary_operator
 
 postfix_expression
     : primary_expression
-    | postfix_expression postfix { 
+    | postfix_expression postfix {
         @$ = @2;
         $$ = cnode_add_loc(cnode_create_exp(EXP_POSTFIX, 2, $1, $2), @2); }
 
 postfix
     : '[' expression ']' { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_ARR, 1, $2), @$); }
-    | '(' arguments ')' { 
+    | '(' arguments ')' {
         $$ = cnode_add_loc(cnode_create_exp(
-                            POSTFIX_CALL, 1, 
+                            POSTFIX_CALL, 1,
                             cnode_add_loc(cnode_list_wrap(ARGS, $2), @2)), @$); }
-    | '(' ')' { 
+    | '(' ')' {
         $$ = cnode_add_loc(cnode_create_exp(
                             POSTFIX_CALL, 1, cnode_list_wrap(ARGS, cnode_create_nop())), @$); }
     | '.' identifier { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_DOT, 1, $2), @$); }
