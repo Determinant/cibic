@@ -236,7 +236,7 @@ char *cnode_debug_type_repr(CNode *ast) {
         case COMP_STMTS: type = "blk_stmts"; break;
         case COMP_DECLS: type = "blk_decls"; break;
         case DECLRS: type = "declrs"; break;
-        case INIT_DECLRS: type = "i_declrs"; break;
+        case INIT_DECLRS: type = "init_declrs"; break;
         case ARGS:  type = "args"; break;
         case PARAMS: type = "params"; break;
         case ID:
