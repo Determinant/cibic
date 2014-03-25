@@ -11,7 +11,7 @@ int yycolumn = 1;
 letter [a-zA-Z_$]
 digit [0-9]
 string ((\\.|[^\n\"\\])*)
-char ([^'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
+char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 
 %s IN_BLOCK_COMMENT IN_INLINE_COMMENT IN_DIRECTIVE
 %option yylineno
@@ -80,7 +80,7 @@ char ([^'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
     return CHAR_CONST; 
 }
 
-'{char} {
+'{char}? {
     yyerror("missing terminating ' character\n");
     exit(1);
 }
@@ -90,7 +90,7 @@ char ([^'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
     return STR_CONST; 
 }
 
-\"{string} {
+\"{string}? {
     yyerror("missing terminating \" character\n");
     exit(1);
 }
