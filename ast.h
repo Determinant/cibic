@@ -23,6 +23,8 @@
 #define STMT_RET        1041
 
 #define MAX_CHDN        1024
+#define MAX_DEBUG_PRINT_BUFF 1024
+#define MAX_DEBUG_PRINT_LVL  1024
 
 typedef struct CNode {
     enum {

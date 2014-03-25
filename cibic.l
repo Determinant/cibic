@@ -1,8 +1,8 @@
 %{
 #include "cibic.tab.h"
-
+#define MAX_LINEBUFF 1024
 int yycolumn = 1;
-char linebuff[1024], *lptr = linebuff;
+char linebuff[MAX_LINEBUFF], *lptr = linebuff;
 
 #define YY_USER_ACTION \
     do { \

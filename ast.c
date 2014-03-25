@@ -221,7 +221,8 @@ CNode *cnode_list_wrap(int type, CNode *list) {
 }
 
 char *cnode_debug_type_repr(CNode *ast) {
-    static char buffer[1024], abuff[1024];
+    static char buffer[MAX_DEBUG_PRINT_BUFF],
+                abuff[MAX_DEBUG_PRINT_BUFF];
     char *type, *aptr = abuff;
     switch (ast->type)
     {
@@ -388,7 +389,7 @@ void cnode_debug_print_plain(CNode *ast) {
 }
 
 void cnode_debug_print_fancy(CNode *ast, int lvl) {
-    static int show[1024];
+    static int show[MAX_DEBUG_PRINT_LVL];
     int i;
     show[lvl] = 1;
     for (i = 0; i < lvl - 1; i++)

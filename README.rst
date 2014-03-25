@@ -1,3 +1,14 @@
 CBIC -- C Implemented Bare and Ingenuous Compiler
 =================================================
 
+Build Requirements
+------------------
+- flex >= 2.5.37
+- bison >= 2.4.3
+- gcc >= 4.7.3
+
+Features
+---------
+- User-friendly AST printing
+- More sophisticated error reporting
+- Small memory footprint
