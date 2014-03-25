@@ -37,6 +37,7 @@ typedef struct CNode {
         INITR, /* initializer */
         TYPE_SPEC,
         FIELD, /* struct-or-union field */
+        FIELDS,
         PLAIN_DECL,
         DECLS,
         FUNCS,

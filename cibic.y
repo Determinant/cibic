@@ -1,5 +1,6 @@
 %{
 #include <stdio.h>
+#include <stdlib.h>
 #include "ast.h"
 %}
 %union {
@@ -83,10 +84,10 @@ type_specifier
     | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); }
     | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); }
     | struct_or_union identifier '{' struct_fields '}' { 
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc($4, @4)), @$); 
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$); 
     }
     | struct_or_union '{' struct_fields '}'            {
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc($3, @3)), @$); 
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $3), @3)), @$); 
     }
     | struct_or_union identifier { 
         $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_create_nop()), @$); 

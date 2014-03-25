@@ -256,6 +256,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             aptr += sprintf(abuff, "\"%s\"", ast->rec.strval);
             break;
         case FIELD: type = "field"; break;
+        case FIELDS: type = "fields"; break;
         case NOP: type = "nop"; break;
         case EXP: 
         case INITR: 

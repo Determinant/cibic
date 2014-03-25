@@ -10,6 +10,9 @@ int yycolumn = 1;
 
 letter [a-zA-Z_$]
 digit [0-9]
+string ((\\.|[^\n\"\\])*)
+char ([^'\\]|\\.|\\[0-7][0-7]?[0-7]?|\\[xX][0-9a-fA-F]+)
+
 %s IN_BLOCK_COMMENT IN_INLINE_COMMENT IN_DIRECTIVE
 %option yylineno
 %%
@@ -72,14 +75,24 @@ digit [0-9]
     return INT_CONST; 
 }
 
-'([^\'\\]|\\.|\\[0-7][0-7]?[0-7]?|\\[xX][0-9a-fA-F]+)' { 
+'{char}' { 
     yylval.strval = strdup(yytext);
     return CHAR_CONST; 
 }
 
-\"[^\n\"]*\" {
+'{char} {
+    yyerror("missing terminating ' character\n");
+    exit(1);
+}
+
+\"{string}\" {
     yylval.strval = strndup(yytext + 1, strlen(yytext) - 2);
     return STR_CONST; 
+}
+
+\"{string} {
+    yyerror("missing terminating \" character\n");
+    exit(1);
 }
 
 "||"                                        { return OPT_OR; }
