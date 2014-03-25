@@ -4,6 +4,8 @@
 #include "cibic.tab.h"
 #include "ast.h"
 
+extern char linebuff[];
+extern char *lptr;
 extern int yyparse();
 extern FILE *yyin;
 char *fname;
@@ -12,8 +14,17 @@ int yywrap() {
     return 1;
 }
 
-int yyerror(char *s) {
-    fprintf(stderr, "%s\n", s);
+void print_error(char *err_msg, int row, int col) {
+    *lptr = '\0';
+    fprintf(stderr, "%d:%d: %s\n%s\n", 
+            row, col, err_msg, linebuff);
+    while (--col) putchar(' ');
+    putchar('^');
+}
+
+int yyerror(char *err_msg) {
+    print_error(err_msg, 
+            yylloc.first_line, yylloc.first_column);
     return 0;
 }
 

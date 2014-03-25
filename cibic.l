@@ -1,11 +1,23 @@
 %{
 #include "cibic.tab.h"
-int yycolumn = 1;
-#define YY_USER_ACTION \
-    yylloc.first_line = yylloc.last_line = yylineno; \
-    yylloc.first_column = yycolumn; yylloc.last_column = yycolumn + yyleng - 1; \
-    yycolumn += yyleng;
 
+int yycolumn = 1;
+char linebuff[1024], *lptr = linebuff;
+
+#define YY_USER_ACTION \
+    do { \
+        yylloc.first_line = yylloc.last_line = yylineno; \
+        yylloc.first_column = yycolumn; yylloc.last_column = yycolumn + yyleng - 1; \
+        yycolumn += yyleng; \
+        memmove(lptr, yytext, yyleng);  \
+        lptr += yyleng; \
+    } while (0);
+
+#define NEW_LINE_USER_ACTION \
+    do { \
+        yycolumn = 1; \
+        lptr = linebuff; \
+    } while (0)
 %}
 
 letter [a-zA-Z_$]
@@ -25,14 +37,14 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 "*/"    BEGIN(INITIAL);
 [^*\n]+   // eat comment in chunks
 "*"       // eat the lone star
-\n      { yycolumn = 1; }
+\n      { NEW_LINE_USER_ACTION; }
 }
 
 <INITIAL>{
 "//"    BEGIN(IN_INLINE_COMMENT);
 }
 <IN_INLINE_COMMENT>{
-\n      { yycolumn = 1; BEGIN(INITIAL); }
+\n      { NEW_LINE_USER_ACTION; BEGIN(INITIAL); }
 [^\n]+ 
 }
 
@@ -40,7 +52,7 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 "#"    BEGIN(IN_DIRECTIVE);
 }
 <IN_DIRECTIVE>{
-\n      { yycolumn = 1; BEGIN(INITIAL); }
+\n      { NEW_LINE_USER_ACTION; BEGIN(INITIAL); }
 [^\n]+ 
 }
 
@@ -121,6 +133,6 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 [();,={}\[\]*|\^&<>+\-*//%~!.]              { return *yytext; }
 
 [ \t\r]                                   /* skip whitespaces */
-\n                                          { yycolumn = 1; }
+\n                                          { NEW_LINE_USER_ACTION; }
 .                                           { return UNKNOWN; }
 %%

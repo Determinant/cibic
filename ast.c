@@ -371,7 +371,7 @@ char *cnode_debug_type_repr(CNode *ast) {
     else
     {
         *aptr = '\0';
-        sprintf(buffer, "%s:%s(%d,%d)", type, abuff, 
+        sprintf(buffer, "%s:%s(%d:%d)", type, abuff, 
                 ast->loc.row, ast->loc.col);
     }
     return buffer;
