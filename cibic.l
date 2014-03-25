@@ -11,7 +11,7 @@ int yycolumn = 1;
 letter [a-zA-Z_$]
 digit [0-9]
 string ((\\.|[^\n\"\\])*)
-char ([^'\\]|\\.|\\[0-7][0-7]?[0-7]?|\\[xX][0-9a-fA-F]+)
+char ([^'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 
 %s IN_BLOCK_COMMENT IN_INLINE_COMMENT IN_DIRECTIVE
 %option yylineno
