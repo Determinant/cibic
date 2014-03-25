@@ -365,11 +365,13 @@ char *cnode_debug_type_repr(CNode *ast) {
         assert(type);
     }
     if (aptr == abuff)
-        sprintf(buffer, "%s", type);
+        sprintf(buffer, "%s(%d,%d)", type,
+                ast->loc.row, ast->loc.col);
     else
     {
         *aptr = '\0';
-        sprintf(buffer, "%s:%s", type, abuff);
+        sprintf(buffer, "%s:%s(%d,%d)", type, abuff, 
+                ast->loc.row, ast->loc.col);
     }
     return buffer;
 }
@@ -406,4 +408,11 @@ void cnode_debug_print(CNode *ast, int fancy) {
     else
         cnode_debug_print_plain(ast);
     puts("");
+}
+
+
+CNode *cnode_add_loc(CNode *node, YYLTYPE loc) {
+    node->loc.row = loc.first_line;
+    node->loc.col = loc.first_column;
+    return node;
 }
