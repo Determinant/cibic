@@ -23,3 +23,10 @@ cibic.tab.c: cibic.y
 
 clean:
 	rm -f cibic lex.yy.c cibic.tab.c *.o
+
+sem: semantics.o test.o
+	gcc -o sem semantics.o test.o
+semantics.o: semantics.c
+	gcc -c semantics.c -Wall -Wextra
+test.o: test.c
+	gcc -c test.c -Wall -Wextra
