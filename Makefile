@@ -27,6 +27,6 @@ clean:
 sem: semantics.o test.o
 	gcc -o sem semantics.o test.o
 semantics.o: semantics.c
-	gcc -c semantics.c -Wall -Wextra
+	gcc -c semantics.c -Wall -Wextra -g
 test.o: test.c
-	gcc -c test.c -Wall -Wextra
+	gcc -c test.c -Wall -Wextra -g

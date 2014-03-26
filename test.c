@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include "semantics.h"
 #define PV(str) cscope_push_var(scope, newvar(str))
+#define PT(str) cscope_push_type(scope, newtype(str))
 
 CVar_t newvar(const char *name) {
     return cvar_create(name, NULL);
@@ -21,11 +22,13 @@ int main() {
     cscope_enter(scope);
     PV("a");
     PV("hello");
+    PT("CType");
     cscope_debug_print(scope);
     cscope_enter(scope);
     PV("a");
     PV("yay");
     PV("world");
+    PT("CType");
     cscope_debug_print(scope);
     cscope_exit(scope);
     cscope_debug_print(scope);

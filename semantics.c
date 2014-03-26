@@ -108,23 +108,23 @@ void cscope_exit(CScope_t cs) {
 
 void ctable_debug_print(CTable_t ct) {
     int i;
-    fprintf(stderr, "\n*** CTable ***\n");
+    fprintf(stderr, "*** CTable ***\n");
     for (i = 0; i < MAX_TABLE_SIZE; i++)
         if (ct->head[i])
         {
             CTNode *p;
             fprintf(stderr, "[%04d]", i);
             for (p = ct->head[i]; p; p = p->next)
-                fprintf(stderr, "->[%s:%d]", ct->pfunc(p), p->lvl);
+                fprintf(stderr, "->[%s:%d]", ct->pfunc(p->val), p->lvl);
             fprintf(stderr, "\n");
         }
-    fprintf(stderr, "*** CTable ***\n\n");
+    fprintf(stderr, "*** CTable ***\n");
 }
 
 void cscope_debug_print(CScope_t cs) {
     int lvl = cs->lvl;
     CSNode *p;
-    fprintf(stderr, "****** CScope ******\n");
+    fprintf(stderr, "\n****** CScope ******\n");
     for (p = cs->top; p; p = p->next)
     {
         CVar *vp;
@@ -142,7 +142,7 @@ void cscope_debug_print(CScope_t cs) {
     ctable_debug_print(cs->tvar);
     fprintf(stderr, "Type Table:\n");
     ctable_debug_print(cs->ttype);
-    fprintf(stderr, "****** CScope ******\n");
+    fprintf(stderr, "****** CScope ******\n\n");
 }
 
 CVar *cscope_lookup_var(CScope_t cs, const char *name) {
