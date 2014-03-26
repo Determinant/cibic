@@ -306,7 +306,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             case '~': type = "~"; break;
             case '!': type = "!"; break;
             case KW_SIZEOF: type = "sizeof"; break;
-            case EXP_POSTFIX: type = "pofix"; break;
+            case EXP_POSTFIX: type = "postfix"; break;
             case POSTFIX_ARR: type = "arr"; break;
             case POSTFIX_CALL: type = "call"; break;
             case POSTFIX_DOT: type = "dot"; break;
@@ -367,7 +367,7 @@ char *cnode_debug_type_repr(CNode *ast) {
         assert(type);
     }
     if (aptr == abuff)
-        sprintf(buffer, "%s(%d,%d)", type,
+        sprintf(buffer, "%s(%d:%d)", type,
                 ast->loc.row, ast->loc.col);
     else
     {
