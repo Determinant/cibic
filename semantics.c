@@ -158,7 +158,7 @@ unsigned int bkdr_hash(const char *str) {
     unsigned int hv = 0;
     while (*str)
         hv = hv * seed + (unsigned)(*str++);
-    return hv % 5;
+    return hv;
 }
 
 const char *cvar_print(void *var) {

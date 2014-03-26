@@ -1,7 +1,6 @@
 #ifndef SEMANTICS_H
 #define SEMANTICS_H
-#include "ast.h"
-#define MAX_TABLE_SIZE  1021
+#include "const.h"
 #define CIBIC_DEBUG
 
 struct CTable;
