@@ -22,5 +22,14 @@ int main() {
     PV("a");
     PV("hello");
     cscope_debug_print(scope);
+    cscope_enter(scope);
+    PV("a");
+    PV("yay");
+    PV("world");
+    cscope_debug_print(scope);
+    cscope_exit(scope);
+    cscope_debug_print(scope);
+    cscope_exit(scope);
+    cscope_debug_print(scope);
     return 0;
 }
