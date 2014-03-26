@@ -15,7 +15,7 @@ cibic.tab.o: cibic.tab.c
 main.o: main.c
 	gcc -c main.c -g -Wall -Wextra
 ast.o:	ast.c
-	gcc -c ast.c -g -Wall -Wextra -DCNODE_DEBUG
+	gcc -c ast.c -g -Wall -Wextra -DCIBIC_DEBUG
 lex.yy.c: cibic.l
 	flex cibic.l
 cibic.tab.c: cibic.y

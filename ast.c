@@ -45,7 +45,7 @@ CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap) {
     for (i = 0; i < pnum; i++)
     {
         CNode *subexp = va_arg(ap, CNode*);
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
         assert(subexp->next == NULL);
 #endif
         subexp->next = exp->chd;
@@ -145,7 +145,7 @@ CNode *cnode_create_initr(int initr_type, CNode *body) {
 
 CNode *cnode_create_decl(CNode *type, CNode *init_declrs) {
     CNode *decl = NEW_CNODE;
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
     assert(type->next == NULL);
     assert(init_declrs->next == NULL);
 #endif
@@ -158,7 +158,7 @@ CNode *cnode_create_decl(CNode *type, CNode *init_declrs) {
 
 CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *stmt) {
     CNode *func = NEW_CNODE;
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
     assert(type->next == NULL);
     assert(plain_decl->next == NULL);
     assert(params->next == NULL);
@@ -175,7 +175,7 @@ CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *s
 
 CNode *cnode_create_init_declr(CNode *declr, CNode *initr) {
     CNode *init_declr = NEW_CNODE;
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
     assert(declr->next == NULL);
     assert(initr->next == NULL);
 #endif
@@ -188,7 +188,7 @@ CNode *cnode_create_init_declr(CNode *declr, CNode *initr) {
 
 CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs) {
     CNode *field = NEW_CNODE;
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
     assert(type_spec->next == NULL);
     assert(declrs->next == NULL);
 #endif
@@ -201,7 +201,7 @@ CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs) {
 
 CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr) {
     CNode *pdecl = NEW_CNODE;
-#ifdef CNODE_DEBUG
+#ifdef CIBIC_DEBUG
     assert(type_spec->next == NULL);
     assert(declr->next == NULL);
 #endif
