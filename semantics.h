@@ -70,8 +70,8 @@ CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc);
 CTable_t ctable_create(Hashfunc_t hfunc);
 #endif
 void *ctable_lookup(CTable_t ct, const char *key);
-void ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
-void ctable_clip(CTable_t ct, unsigned int hv, int max_lvl);
+int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
+void ctable_clip(CTable_t ct, const char *key, int max_lvl);
 void ctable_debug_print(CTable_t ct);
 
 typedef struct CSNode {
@@ -91,8 +91,8 @@ typedef struct CScope {
 CScope_t cscope_create();
 CVar *cscope_lookup_var(CScope_t cs, const char *name);
 CType *cscope_lookup_type(CScope_t cs, const char *name);
-void cscope_push_var(CScope_t cs, CVar *var);
-void cscope_push_type(CScope_t cs, CType *type);
+int cscope_push_var(CScope_t cs, CVar *var);
+int cscope_push_type(CScope_t cs, CType *type);
 void cscope_enter(CScope_t cs);
 void cscope_exit(CScope_t cs);
 void cscope_debug_print(CScope_t cs);

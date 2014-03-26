@@ -23,25 +23,32 @@ CTable_t ctable_create(Hashfunc_t hfunc) {
 #endif
 
 void *ctable_lookup(CTable_t ct, const char *key) {
-    unsigned int hv = (ct->hfunc(key)) % MAX_TABLE_SIZE;
+    unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
     CTNode *p = ct->head[hv];
     for (; p; p = p->next)
-        if (strcmp(p->key, key))
+        if (!strcmp(p->key, key))
             return p->val;
     return NULL; /* not found */
 }
 
-void ctable_insert(CTable_t ct, const char *key, void *val, int lvl) {
-    unsigned int hv = (ct->hfunc(key)) % MAX_TABLE_SIZE;
-    CTNode *np = NEW(CTNode);
+int ctable_insert(CTable_t ct, const char *key, void *val, int lvl) {
+    unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
+    CTNode *p = ct->head[hv];
+    CTNode *np;
+    for (; p && p->lvl == lvl; p = p->next)
+        if (!strcmp(p->key, key))
+            return 0; /* conflict */
+    np = NEW(CTNode);
     np->key = key;
     np->val = val;
     np->lvl = lvl;
     np->next = ct->head[hv];
     ct->head[hv] = np;
+    return 1;
 }
 
-void ctable_clip(CTable_t ct, unsigned int hv, int max_lvl) {
+void ctable_clip(CTable_t ct, const char *key, int max_lvl) {
+    unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
     CTNode *p = ct->head[hv], *np;
     for (; p && p->lvl > max_lvl; p = np)
     {
@@ -66,22 +73,30 @@ CScope_t cscope_create() {
     return p;
 }
 
-void cscope_push_var(CScope_t cs, CVar *var) {
+int cscope_push_var(CScope_t cs, CVar *var) {
 #ifdef CIBIC_DEBUG
     assert(cs->top);
 #endif
-    var->next = cs->top->vhead;
-    cs->top->vhead = var;
-    ctable_insert(cs->tvar, var->name, var, cs->lvl);
+    if (ctable_insert(cs->tvar, var->name, var, cs->lvl))
+    {
+        var->next = cs->top->vhead;
+        cs->top->vhead = var;
+        return 1;
+    }
+    else return 0; /* naming conflict */
 }
 
-void cscope_push_type(CScope_t cs, CType *type) {
+int cscope_push_type(CScope_t cs, CType *type) {
 #ifdef CIBIC_DEBUG
     assert(cs->top);
 #endif
-    type->next = cs->top->thead;
-    cs->top->thead = type;
-    ctable_insert(cs->ttype, type->name, type, cs->lvl);
+    if (ctable_insert(cs->ttype, type->name, type, cs->lvl))
+    {
+        type->next = cs->top->thead;
+        cs->top->thead = type;
+        return 1;
+    }
+    else return 0; /* naming conflict */
 }
 
 void cscope_enter(CScope_t cs) {
@@ -100,9 +115,9 @@ void cscope_exit(CScope_t cs) {
     cs->lvl--;
     cs->top = top_o->next;
     for (vp = top_o->vhead; vp; vp = vp->next)
-        ctable_clip(cs->tvar, bkdr_hash(vp->name), cs->lvl);
+        ctable_clip(cs->tvar, vp->name, cs->lvl);
     for (tp = top_o->thead; tp; tp = tp->next)
-        ctable_clip(cs->ttype, bkdr_hash(tp->name), cs->lvl);
+        ctable_clip(cs->ttype, tp->name, cs->lvl);
     free(top_o);
 }
 
