@@ -65,8 +65,8 @@ CScope_t cscope_create() {
     p->lvl = -1;
     p->top = NULL;
 #ifdef CIBIC_DEBUG
-    p->tvar = ctable_create(bkdr_hash, cvar_print);
-    p->ttype = ctable_create(bkdr_hash, ctype_print);
+    p->tvar = ctable_create(bkdr_hash, ctable_cvar_print);
+    p->ttype = ctable_create(bkdr_hash, ctable_ctype_print);
 #else
     p->tvar = ctable_create(bkdr_hash);
     p->ttype = ctable_create(bkdr_hash);
@@ -75,7 +75,7 @@ CScope_t cscope_create() {
     return p;
 }
 
-int cscope_push_var(CScope_t cs, CVar *var) {
+int cscope_push_var(CScope_t cs, CVar_t var) {
 #ifdef CIBIC_DEBUG
     assert(cs->top);
 #endif
@@ -88,7 +88,7 @@ int cscope_push_var(CScope_t cs, CVar *var) {
     else return 0; /* naming conflict */
 }
 
-int cscope_push_type(CScope_t cs, CType *type) {
+int cscope_push_type(CScope_t cs, CType_t type) {
 #ifdef CIBIC_DEBUG
     assert(cs->top);
 #endif
@@ -112,8 +112,8 @@ void cscope_enter(CScope_t cs) {
 
 void cscope_exit(CScope_t cs) {
     CSNode *top_o = cs->top;
-    CVar *vp;
-    CType *tp;
+    CVar_t vp;
+    CType_t tp;
     cs->lvl--;
     cs->top = top_o->next;
     for (vp = top_o->vhead; vp; vp = vp->next)
@@ -144,8 +144,8 @@ void cscope_debug_print(CScope_t cs) {
     fprintf(stderr, "\n****** CScope ******\n");
     for (p = cs->top; p; p = p->next)
     {
-        CVar *vp;
-        CType *tp;
+        CVar_t vp;
+        CType_t tp;
         fprintf(stderr, "Level %d:\n", lvl--);
         fprintf(stderr, "Vars: ");
         for (vp = p->vhead; vp; vp = vp->next)
@@ -162,11 +162,11 @@ void cscope_debug_print(CScope_t cs) {
     fprintf(stderr, "****** CScope ******\n\n");
 }
 
-CVar *cscope_lookup_var(CScope_t cs, const char *name) {
+CVar_t cscope_lookup_var(CScope_t cs, const char *name) {
     return ctable_lookup(cs->tvar, name);
 }
 
-CType *cscope_lookup_type(CScope_t cs, const char *name) {
+CType_t cscope_lookup_type(CScope_t cs, const char *name) {
     return ctable_lookup(cs->ttype, name);
 }
 
@@ -178,27 +178,27 @@ unsigned int bkdr_hash(const char *str) {
     return hv;
 }
 
-const char *cvar_print(void *var) {
+const char *ctable_cvar_print(void *var) {
     static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s", ((CVar *)var)->name);
+    sprintf(buff, "%s", ((CVar_t )var)->name);
     return buff;
 }
 
-const char *ctype_print(void *type) {
+const char *ctable_ctype_print(void *type) {
     static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s", ((CType *)type)->name);
+    sprintf(buff, "%s", ((CType_t )type)->name);
     return buff;
 }
 
-CVar_t cvar_create(const char *name, CType *type) {
-    CVar *cv = NEW(CVar);
+CVar_t cvar_create(const char *name, CType_t type) {
+    CVar_t cv = NEW(CVar);
     cv->name = name;
     cv->type = type;
     return cv;
 }
 
 CType_t ctype_create(const char *name, int type) {
-    CType *ct = NEW(CType);
+    CType_t ct = NEW(CType);
     ct->name = name;
     ct->type = type;
     switch (type)
@@ -210,11 +210,72 @@ CType_t ctype_create(const char *name, int type) {
     return ct;
 }
 
+void ctype_print(CType_t);
+
+void cvar_print(CVar_t cv) {
+    fprintf(stderr, "[var:%s]->", cv->name);
+    ctype_print(cv->type);
+}
+
+void ctype_print(CType_t ct) {
+    switch (ct->type)
+    {
+        case CINT: fprintf(stderr, "[int]"); break;
+        case CCHAR: fprintf(stderr, "[char]"); break;
+        case CVOID: fprintf(stderr, "[void]"); break;
+        case CSTRUCT: case CUNION:
+            {
+                CTable_t f = ct->rec.fields;
+                int i;
+                CTNode *fn; 
+                fprintf(stderr, "[%s:(name:%s|fields:", ct->type == CSTRUCT ? "struct" : "union"
+                                                , ct->name);
+                if (f)
+                {
+                    int first = 1;
+                    for (i = 0; i < MAX_TABLE_SIZE; i++)
+                        for (fn = f->head[i]; fn; fn = fn->next)
+                        {
+                            fprintf(stderr, "%s", first ? (first = 0, "") : ",");
+                            fprintf(stderr, "%s:", fn->key);
+                            cvar_print((CVar_t)fn->val);
+                        }
+                }
+                fprintf(stderr, ")]");
+            }
+            break;
+        case CARR:
+            {
+                fprintf(stderr, "[arr:(%d)]->", ct->rec.arr.len);
+                ctype_print(ct->rec.arr.elem);
+            }
+            break;
+        case CPTR:
+            {
+                fprintf(stderr, "[ptr]->");
+                ctype_print(ct->rec.ref);
+            }
+            break;
+        case CFUNC:
+            {
+                CVar_t p;
+                fprintf(stderr, "[func:(name:%s|params:", ct->name);
+                for (p = ct->rec.func.params; p; p = p->next)
+                {
+                    cvar_print(p);
+                    if (p->next) fprintf(stderr, ",");
+                }
+                fprintf(stderr, ")]->");
+                ctype_print(ct->rec.func.ret);
+            }
+            break;
+    }
+}
 
 CTable_t semantics_fields(CNode *);
-CType *semantics_type_spec(CNode *p) {
+CType_t semantics_type_spec(CNode *p) {
     CHECK_TYPE(p, TYPE_SPEC);
-    CType *type;
+    CType_t type;
     switch (p->rec.subtype)
     {
         case KW_VOID: type = ctype_create("", CVOID); break;
@@ -237,31 +298,31 @@ CType *semantics_type_spec(CNode *p) {
     return type;
 }
 
-CVar *semantics_declr(CNode *, CType *);
-CVar *semantics_p_decl(CNode *p) {
+CVar_t semantics_declr(CNode *, CType_t );
+CVar_t semantics_p_decl(CNode *p) {
     CHECK_TYPE(p, PLAIN_DECL);
     return semantics_declr(p->chd->next,
                             semantics_type_spec(p->chd));
 }
 
-CVar *semantics_params(CNode *p) {
+CVar_t semantics_params(CNode *p) {
     CHECK_TYPE(p, PARAMS);
     p = p->chd;
     if (p->type == NOP) return NULL; /* void arguments */
-    CVar *params = semantics_p_decl(p);
-    for (; p; p = p->next)
+    CVar_t params = semantics_p_decl(p);
+    for (p = p->next; p; p = p->next)
     {
-        CVar *t = semantics_p_decl(p);
+        CVar_t t = semantics_p_decl(p);
         t->next = params;
         params = t;
     }
     return params;
 }
 
-CVar *semantics_p_declr(CNode *p, CType *type_spec) {
+CVar_t semantics_p_declr(CNode *p, CType_t type_spec) {
     /* deal with pointer prefix */
     CNode *t;
-    CType *tt, *ptype;
+    CType_t tt, ptype;
     const char *name;
     if (p->type == ID) 
     {
@@ -286,15 +347,16 @@ CVar *semantics_p_declr(CNode *p, CType *type_spec) {
     return cvar_create(name, ptype);
 }
 
-CVar *semantics_declr(CNode *p, CType *type_spec) {
-    CType *type;
-    CHECK_TYPE(p, DECLR);
+CVar_t semantics_declr(CNode *p, CType_t type_spec) {
+    CType_t type;
     const char *name;
+    if (p->type == ID || p->rec.subtype == '*')
+        return semantics_p_declr(p, type_spec);
     switch (p->rec.subtype)
     {
         case DECLR_FUNC: 
             {
-                CVar *p_declr = semantics_p_declr(p->chd, type_spec);
+                CVar_t p_declr = semantics_p_declr(p->chd, type_spec);
                 type = ctype_create("", CFUNC); /* function declr */
                 type->rec.func.params = semantics_params(p->chd->next);
                 /* incomplete type */
@@ -307,7 +369,7 @@ CVar *semantics_declr(CNode *p, CType *type_spec) {
         case DECLR_ARR:
             {
                 CNode *t;
-                CType *tt;
+                CType_t tt;
                 type = ctype_create("", CARR); /* array declr */
                 for (t = p, tt = type;; t = t->chd)
                 {
@@ -315,7 +377,7 @@ CVar *semantics_declr(CNode *p, CType *type_spec) {
                     tt->rec.arr.len = t->chd->next->rec.intval;     /* array length */
                     if (t->chd->type == ID || t->chd->rec.subtype == '*')
                     {
-                        CVar *p_declr = semantics_p_declr(t->chd, type_spec);
+                        CVar_t p_declr = semantics_p_declr(t->chd, type_spec);
                         tt->rec.arr.elem = p_declr->type;
                         name = p_declr->name;
                         free(p_declr);
@@ -333,7 +395,7 @@ CVar *semantics_declr(CNode *p, CType *type_spec) {
 
 CTable_t semantics_fields(CNode *p) {
 #ifdef CIBIC_DEBUG
-    CTable_t ct = ctable_create(bkdr_hash, cvar_print);
+    CTable_t ct = ctable_create(bkdr_hash, ctable_cvar_print);
 #else
     CTable_t ct = ctable_create(bkdr_hash);
 #endif
@@ -342,7 +404,7 @@ CTable_t semantics_fields(CNode *p) {
         CNode *declr = p->chd->next->chd;
         for (; declr; declr = declr->next)
         {
-            CVar *var = semantics_declr(declr, 
+            CVar_t var = semantics_declr(declr, 
                                         semantics_type_spec(p->chd));
             /* TODO: conflicts report */
             ctable_insert(ct, var->name, var, 0);
@@ -351,21 +413,24 @@ CTable_t semantics_fields(CNode *p) {
     return ct;
 }
 
-CVar *semantics_blk(CNode *p, CScope_t scope) {
+CVar_t semantics_blk(CNode *p, CScope_t scope) {
 }
 
-CType *semantics_func(CNode *p, CScope_t scope) {
+CType_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
     CNode *chd = p->chd->next;
-    CType *func = ctype_create(chd->rec.strval, CFUNC);
+    CType_t func = ctype_create(chd->rec.strval, CFUNC);
     chd = chd->next;
     func->rec.func.ret = semantics_type_spec(p->chd);   /* check return type */
     func->rec.func.params = semantics_params(chd);       /* check params */
     func->rec.func.local = semantics_blk(chd->next, scope); /* check blk */
+    ctype_print(func);
+    fprintf(stderr, "\n");
     return func;
 }
 
 void semantics_check_(CNode *p, CScope_t scope) {
+    p = p->chd;
     switch (p->type)
     {
         case FUNC_DEF: semantics_func(p, scope); break;

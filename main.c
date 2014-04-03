@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "cibic.tab.h"
 #include "ast.h"
+#include "semantics.h"
 
 extern char linebuff[];
 extern char *lptr;
@@ -41,6 +42,11 @@ void print_ast() {
     else exit(1);
 }
 
+void print_sem() {
+    yyparse();
+    semantics_check(ast_root);
+}
+
 void print_help() {
     fprintf(stderr,
             "CBIC: C Implemented Bare and Ingenuous Compiler\n\n"
@@ -62,8 +68,9 @@ static struct option lopts[] = {
 
 enum {
     PRINT_AST,
-    PRINT_HELP
-} mode = PRINT_HELP;
+    PRINT_HELP,
+    PRINT_SEM
+} mode = PRINT_SEM;
 
 int main(int argc, char **argv) {
     int option_index = 0;
@@ -103,6 +110,7 @@ int main(int argc, char **argv) {
     {
         case PRINT_AST: print_ast(); break;
         case PRINT_HELP: print_help(); break;
+        default: print_sem();
     }
     return 0;
 }

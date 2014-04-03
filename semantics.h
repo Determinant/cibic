@@ -16,6 +16,7 @@ typedef struct CVar{
 
 typedef CVar *CVar_t;
 CVar_t cvar_create(const char *name, struct CType *type);
+void cvar_print(CVar_t cv);
 
 typedef struct CType {
     enum {
@@ -48,6 +49,7 @@ typedef struct CType {
 
 typedef CType *CType_t;
 CType_t ctype_create(const char *name, int type);
+void ctype_debug_print(CType_t ct);
 
 typedef unsigned int (*Hashfunc_t) (const char *);
 #ifdef CIBIC_DEBUG
@@ -104,8 +106,8 @@ void cscope_exit(CScope_t cs);
 void cscope_debug_print(CScope_t cs);
 
 unsigned int bkdr_hash(const char *str);
-const char *cvar_print(void *var);
-const char *ctype_print(void *type);
+const char *ctable_cvar_print(void *var);
+const char *ctable_ctype_print(void *type);
 
 void semantics_check(CNode *ast);
 #endif
