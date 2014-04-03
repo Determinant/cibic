@@ -1,9 +1,10 @@
 #ifndef SEMANTICS_H
 #define SEMANTICS_H
 #include "const.h"
-#define CIBIC_DEBUG
 
+typedef struct CNode CNode;
 struct CTable;
+typedef struct CTable *CTable_t;
 struct CType;
 
 typedef struct CVar{
@@ -24,17 +25,23 @@ typedef struct CType {
         CSTRUCT,
         CUNION,
         CARR,
-        CPTR
+        CPTR,
+        CFUNC
     } type;
     const char *name;
     struct CType *next;
     union {
-        struct CType *fields; /* for a struct or union */
+        CTable_t fields; /* for a struct or union */
         struct CType *ref;    /* for a pointer */
         struct {
             struct CType *elem;
             int len;
         } arr;                /* for an array */
+        struct {
+            CVar *params;
+            CVar *local;
+            struct CType *ret;
+        } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */
 } CType;
@@ -46,7 +53,6 @@ typedef unsigned int (*Hashfunc_t) (const char *);
 #ifdef CIBIC_DEBUG
 typedef const char *(*Printfunc_t) (void *);
 #endif
-typedef struct CTable *CTable_t;
 
 typedef struct CTNode {
     const char *key;
@@ -100,4 +106,6 @@ void cscope_debug_print(CScope_t cs);
 unsigned int bkdr_hash(const char *str);
 const char *cvar_print(void *var);
 const char *ctype_print(void *type);
+
+void semantics_check(CNode *ast);
 #endif

@@ -2,6 +2,7 @@
 #define AST_H
 #include <stdarg.h>
 #include "const.h"
+#include "semantics.h"
 #include "cibic.tab.h"
 
 typedef struct CNode {
@@ -44,6 +45,10 @@ typedef struct CNode {
         int subtype;
         char *strval;
     } rec;
+    union {
+        CType *type;
+        CVar *var_ref;
+    } ext;
     struct CNode *chd, *next;
     /* For error reporting */
     struct Location {
