@@ -81,8 +81,10 @@ int cscope_push_var(CScope_t cs, CVar_t var) {
 #endif
     if (ctable_insert(cs->tvar, var->name, var, cs->lvl))
     {
-        var->next = cs->top->vhead;
-        cs->top->vhead = var;
+        CSVar *csvar = NEW(CSVar);
+        csvar->var = var;
+        csvar->next = cs->top->vhead;
+        cs->top->vhead = csvar;
         return 1;
     }
     else return 0; /* naming conflict */
@@ -94,8 +96,10 @@ int cscope_push_type(CScope_t cs, CType_t type) {
 #endif
     if (ctable_insert(cs->ttype, type->name, type, cs->lvl))
     {
-        type->next = cs->top->thead;
-        cs->top->thead = type;
+        CSType *cstype = NEW(CSType);
+        cstype->type = type;
+        cstype->next = cs->top->thead;
+        cs->top->thead = cstype;
         return 1;
     }
     else return 0; /* naming conflict */
@@ -112,14 +116,14 @@ void cscope_enter(CScope_t cs) {
 
 void cscope_exit(CScope_t cs) {
     CSNode *top_o = cs->top;
-    CVar_t vp;
-    CType_t tp;
+    CSVar *vp;
+    CSType *tp;
     cs->lvl--;
     cs->top = top_o->next;
     for (vp = top_o->vhead; vp; vp = vp->next)
-        ctable_clip(cs->tvar, vp->name, cs->lvl);
+        ctable_clip(cs->tvar, vp->var->name, cs->lvl);
     for (tp = top_o->thead; tp; tp = tp->next)
-        ctable_clip(cs->ttype, tp->name, cs->lvl);
+        ctable_clip(cs->ttype, tp->type->name, cs->lvl);
     free(top_o);
 }
 
@@ -144,15 +148,15 @@ void cscope_debug_print(CScope_t cs) {
     fprintf(stderr, "\n****** CScope ******\n");
     for (p = cs->top; p; p = p->next)
     {
-        CVar_t vp;
-        CType_t tp;
+        CSVar *vp;
+        CSType *tp;
         fprintf(stderr, "Level %d:\n", lvl--);
         fprintf(stderr, "Vars: ");
         for (vp = p->vhead; vp; vp = vp->next)
-            fprintf(stderr, "%s ", vp->name);
+            fprintf(stderr, "%s ", vp->var->name);
         fprintf(stderr, "\nTypes: ");
         for (tp = p->thead; tp; tp = tp->next)
-            fprintf(stderr, "%s ", tp->name);
+            fprintf(stderr, "%s ", tp->type->name);
         fprintf(stderr, "\n\n");
     }
     fprintf(stderr, "Var Table:\n");
@@ -475,7 +479,13 @@ CVar_t semantics_stmt(CNode *p, CScope_t scope) {
             /* TODO: expression handle */
             break;
         case STMT_COMP:
-            return semantics_comp(p, scope);
+            {
+                CVar_t res;
+                cscope_enter(scope);
+                res = semantics_comp(p, scope);
+                cscope_exit(scope);
+                return res;
+            }
         case STMT_IF:
             /* TODO: `if' statement */
             ;
@@ -509,7 +519,6 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
     CNode *decls = p->chd,
           *stmts = p->chd->next, *i;
     CVar_t res = NULL;
-    cscope_enter(scope);
     if (decls->chd->type != NOP)
         for (i = decls->chd; i; i = i->next)
         {
@@ -534,7 +543,6 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
                 res = vlist;
             }
         }
-    cscope_exit(scope);
     return res;
 }
 
@@ -544,12 +552,10 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
     CType_t func = ctype_create(chd->rec.strval, CFUNC);
     chd = chd->next;
     func->rec.func.ret = semantics_type_spec(p->chd, scope);   /* check return type */
-    cscope_enter(scope);
-    func->rec.func.params = semantics_params(chd, scope);       /* check params */
-    func->rec.func.local = semantics_comp(chd->next, scope); /* check comp */
-    cscope_exit(scope);
-    ctype_print(func);
-    fprintf(stderr, "\n");
+    cscope_enter(scope);                                       /* enter into function local scope */
+    func->rec.func.params = semantics_params(chd, scope);      /* check params */
+    func->rec.func.local = semantics_comp(chd->next, scope);   /* check comp */
+    cscope_exit(scope);                                        /* exit from local scope */
     return func;
 }
 
@@ -568,5 +574,20 @@ void semantics_check(CNode *ast) {
     cscope_push_type(scope, ctype_create("int", CINT));
     cscope_push_type(scope, ctype_create("char", CCHAR));
     cscope_push_type(scope, ctype_create("void", CVOID));
-    semantics_check_(ast, scope);
+    /* check all definitions and declarations */
+    for (ast = ast->chd; ast; ast = ast->next)
+    {
+        switch (ast->type)
+        {
+            case FUNC_DEF: 
+                if (!cscope_push_type(scope, semantics_func(ast, scope)))
+                    puts("fuck func");
+                break;
+            case DECL: 
+                semantics_decl(ast, scope); 
+                break;
+            default: assert(0);
+        }
+    }
+    cscope_debug_print(scope);
 }

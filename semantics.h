@@ -82,9 +82,19 @@ int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
 void ctable_clip(CTable_t ct, const char *key, int max_lvl);
 void ctable_debug_print(CTable_t ct);
 
+typedef struct CSVar {
+    struct CVar *var;
+    struct CSVar *next;
+} CSVar;
+
+typedef struct CSType {
+    struct CType *type;
+    struct CSType *next;
+} CSType;
+
 typedef struct CSNode {
-    struct CVar *vhead;
-    struct CType *thead;
+    struct CSVar *vhead;
+    struct CSType *thead;
     struct CSNode *next;
 } CSNode;
 
