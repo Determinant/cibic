@@ -44,7 +44,11 @@ void print_ast() {
 
 void print_sem() {
     yyparse();
-    semantics_check(ast_root);
+    if (ast_root)
+    {
+        semantics_check(ast_root);
+    }
+    else exit(1);
 }
 
 void print_help() {

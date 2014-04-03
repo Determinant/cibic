@@ -265,6 +265,12 @@ void ctype_print(CType_t ct) {
                     cvar_print(p);
                     if (p->next) fprintf(stderr, ",");
                 }
+                fprintf(stderr, "|local:");
+                for (p = ct->rec.func.local; p; p = p->next)
+                {
+                    cvar_print(p);
+                    if (p->next) fprintf(stderr, ",");
+                }
                 fprintf(stderr, ")]->");
                 ctype_print(ct->rec.func.ret);
             }
@@ -272,8 +278,8 @@ void ctype_print(CType_t ct) {
     }
 }
 
-CTable_t semantics_fields(CNode *);
-CType_t semantics_type_spec(CNode *p) {
+CTable_t semantics_fields(CNode *, CScope_t scope);
+CType_t semantics_type_spec(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, TYPE_SPEC);
     CType_t type;
     switch (p->rec.subtype)
@@ -288,9 +294,17 @@ CType_t semantics_type_spec(CNode *p) {
                 type = ctype_create(id->type == NOP ? "" : id->rec.strval,
                                     p->rec.subtype == KW_STRUCT ? CSTRUCT : CUNION);
                 if (fields->type == NOP)
-                    type->rec.fields = NULL;
+                {
+                    type = cscope_lookup_type(scope, id->rec.strval);
+                    if (!type) puts("type not exist");
+                }
                 else
-                    type->rec.fields = semantics_fields(fields);
+                {
+                    type->rec.fields = semantics_fields(fields, scope);
+                    if (id->type != NOP)
+                        if (!cscope_push_type(scope, type))
+                            puts("fuck type");
+                }
             }
             break;
         default: assert(0);
@@ -299,22 +313,26 @@ CType_t semantics_type_spec(CNode *p) {
 }
 
 CVar_t semantics_declr(CNode *, CType_t );
-CVar_t semantics_p_decl(CNode *p) {
+CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PLAIN_DECL);
     return semantics_declr(p->chd->next,
-                            semantics_type_spec(p->chd));
+                            semantics_type_spec(p->chd, scope));
 }
 
-CVar_t semantics_params(CNode *p) {
+CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
     p = p->chd;
     if (p->type == NOP) return NULL; /* void arguments */
-    CVar_t params = semantics_p_decl(p);
+    CVar_t params = semantics_p_decl(p, scope);
+    cscope_push_var(scope, params);
     for (p = p->next; p; p = p->next)
     {
-        CVar_t t = semantics_p_decl(p);
-        t->next = params;
-        params = t;
+        CVar_t var = semantics_p_decl(p, scope);
+        if (scope)  /* params inside a function definition */
+            if (!cscope_push_var(scope, var))
+                puts("fuck params");
+        var->next = params;
+        params = var;
     }
     return params;
 }
@@ -358,7 +376,7 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec) {
             {
                 CVar_t p_declr = semantics_p_declr(p->chd, type_spec);
                 type = ctype_create("", CFUNC); /* function declr */
-                type->rec.func.params = semantics_params(p->chd->next);
+                type->rec.func.params = semantics_params(p->chd->next, NULL);
                 /* incomplete type */
                 type->rec.func.local = NULL;
                 type->rec.func.ret = p_declr->type;
@@ -393,7 +411,7 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec) {
     return cvar_create(name, type);
 }
 
-CTable_t semantics_fields(CNode *p) {
+CTable_t semantics_fields(CNode *p, CScope_t scope) {
 #ifdef CIBIC_DEBUG
     CTable_t ct = ctable_create(bkdr_hash, ctable_cvar_print);
 #else
@@ -405,15 +423,119 @@ CTable_t semantics_fields(CNode *p) {
         for (; declr; declr = declr->next)
         {
             CVar_t var = semantics_declr(declr, 
-                                        semantics_type_spec(p->chd));
+                                        semantics_type_spec(p->chd, scope));
             /* TODO: conflicts report */
-            ctable_insert(ct, var->name, var, 0);
+            if (!ctable_insert(ct, var->name, var, 0))
+                puts("fuck fields");
         }
     }
     return ct;
 }
 
-CVar_t semantics_blk(CNode *p, CScope_t scope) {
+CVar_t semantics_decl(CNode *p, CScope_t scope) {
+    CHECK_TYPE(p, DECL);
+    CNode *init = p->chd->next;
+    CType_t type = semantics_type_spec(p->chd, scope);
+    CVar_t res = NULL;
+    switch (type->type)
+    {
+        case CSTRUCT: 
+        case CUNION:
+            cscope_push_type(scope, type); break;
+        case CINT:
+        case CCHAR:
+        case CVOID:
+            /* TODO: useless typename warning */
+            ;
+            break;
+        default: assert(0);
+    }
+    if (init->type != NOP)
+    {
+        CNode *p;
+        for (p = init->chd; p; p = p->next)
+        {
+            /* TODO: initializer checking */
+            CVar_t var = semantics_declr(p->chd, type);
+            if (!cscope_push_var(scope, var))
+                puts("fuck decl");
+            var->next = res;
+            res = var;
+        }
+    }
+    return res;
+}
+
+CVar_t semantics_comp(CNode *, CScope_t);
+CVar_t semantics_stmt(CNode *p, CScope_t scope) {
+    CHECK_TYPE(p, STMT);
+    switch (p->rec.subtype)
+    {
+        case STMT_EXP: 
+            /* TODO: expression handle */
+            break;
+        case STMT_COMP:
+            return semantics_comp(p, scope);
+        case STMT_IF:
+            /* TODO: `if' statement */
+            ;
+            break;
+        case STMT_FOR:
+            /* TODO: `for' statement */
+            ;
+            break;
+        case STMT_WHILE:
+            /* TODO: `while' statement */
+            ;
+            break;
+        case STMT_CONT:
+            /* TODO: `continue' statement */
+            ;
+            break;
+        case STMT_BREAK:
+            /* TODO: `break' statement */
+            ;
+            break;
+        case STMT_RET:
+            /* TODO: `return' statement */
+            ;
+            break;
+        default: assert(0);
+    }
+    return NULL;
+}
+
+CVar_t semantics_comp(CNode *p, CScope_t scope) {
+    CNode *decls = p->chd,
+          *stmts = p->chd->next, *i;
+    CVar_t res = NULL;
+    cscope_enter(scope);
+    if (decls->chd->type != NOP)
+        for (i = decls->chd; i; i = i->next)
+        {
+            CVar_t vlist = semantics_decl(i, scope);
+            if (vlist)  /* collect local vars */
+            {
+                CVar_t p;
+                for (p = vlist; p->next; p = p->next);
+                p->next = res;
+                res = vlist;
+            }
+        }
+    if (stmts->chd->type != NOP)
+        for (i = stmts->chd; i; i = i->next)
+        {
+            CVar_t vlist = semantics_stmt(i, scope);
+            if (vlist)  /* collect nested local vars */
+            {
+                CVar_t p;
+                for (p = vlist; p->next; p = p->next);
+                p->next = res;
+                res = vlist;
+            }
+        }
+    cscope_exit(scope);
+    return res;
 }
 
 CType_t semantics_func(CNode *p, CScope_t scope) {
@@ -421,9 +543,11 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
     CNode *chd = p->chd->next;
     CType_t func = ctype_create(chd->rec.strval, CFUNC);
     chd = chd->next;
-    func->rec.func.ret = semantics_type_spec(p->chd);   /* check return type */
-    func->rec.func.params = semantics_params(chd);       /* check params */
-    func->rec.func.local = semantics_blk(chd->next, scope); /* check blk */
+    func->rec.func.ret = semantics_type_spec(p->chd, scope);   /* check return type */
+    cscope_enter(scope);
+    func->rec.func.params = semantics_params(chd, scope);       /* check params */
+    func->rec.func.local = semantics_comp(chd->next, scope); /* check comp */
+    cscope_exit(scope);
     ctype_print(func);
     fprintf(stderr, "\n");
     return func;
