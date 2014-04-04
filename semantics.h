@@ -109,6 +109,11 @@ typedef struct CScope {
     struct CTable *ttype;
 } CScope;
 
+typedef struct ExpType {
+    CType *type;
+    int lval;
+} ExpType;
+
 CScope_t cscope_create();
 CVar *cscope_lookup_var(CScope_t cs, const char *name);
 CType *cscope_lookup_type(CScope_t cs, const char *name);

@@ -47,7 +47,7 @@ typedef struct CNode {
     } rec;
     union {
         CType *type;
-        CVar *var_ref;
+        CVar *var;
     } ext;
     struct CNode *chd, *next;
     /* For error reporting */

@@ -6,8 +6,8 @@
 #include "ast.h"
 #define NEW(type) ((type *)malloc(sizeof(type)))
 #define CHECK_TYPE(p, _type) assert(p->type == _type)
-#define ERROR(row, col) print_error(err_buff, NULL, row, col, 0)
-#define WARNING(row, col) print_error(err_buff, NULL, row, col, 1)
+#define ERROR(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 0)
+#define WARNING(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 1)
 
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
@@ -29,6 +29,9 @@ CTable_t ctable_create(Hashfunc_t hfunc) {
 extern void print_error(char *, char *, int, int, int);
 extern char *load_line(int);
 static char err_buff[MAX_ERROR_BUFF];
+static CType_t basic_type_int; 
+static CType_t basic_type_char;
+static CType_t basic_type_void;
 
 void *ctable_lookup(CTable_t ct, const char *key) {
     unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
@@ -303,7 +306,7 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     if (old->type != new->type) /* not a struct or union */
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
-        ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast);
     }
     /* otherwise it is a struct or union */
     if (!new->rec.fields) /* use the old definition */
@@ -311,11 +314,11 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     /* otherwise there's a completion definition */
     if (cscope_push_type(scope, new)) /* try to push the defintion */
         return new;
-    /* conflict appear */
+    /* conflict appears */
     if (old->rec.fields) /* if the old one is complete */
     {
         sprintf(err_buff, "redefinition of '%s'", new->name);
-        ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast);
     }
     /* otherwise incomplete, thus complete the type */
     old->next = new->next;
@@ -325,8 +328,19 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     return old;
 }
 
-int is_same_type(CType_t typea, CType_t typeb) {
+int is_same_type(CType_t typea, CType_t typeb, int arr2ptr) {
     if (typea == typeb) return 1;
+    if (arr2ptr)
+        do {
+            int ta = typea->type, tb = typeb->type;
+            if (ta == CPTR) typea = typea->rec.ref;
+            else if (ta == CARR) typea = typea->rec.arr.elem;
+            else break;
+            if (tb == CPTR) typeb = typeb->rec.ref;
+            else if (tb == CARR) typeb = typeb->rec.arr.elem;
+            else break;
+            return is_same_type(typea, typeb, 0);
+        } while (0);
     if (typea->type != typeb->type) return 0;
     switch (typea->type)
     {
@@ -336,22 +350,22 @@ int is_same_type(CType_t typea, CType_t typeb) {
             if (typea->rec.arr.len != typeb->rec.arr.len)
                 return 0;
             return is_same_type(typea->rec.arr.elem,
-                                typeb->rec.arr.elem);
+                                typeb->rec.arr.elem, 0);
         case CPTR:
             return is_same_type(typea->rec.ref,
-                                typeb->rec.ref);
+                                typeb->rec.ref, 0);
         case CFUNC:
             {
                 CVar_t pa, pb;
                 for (pa = typea->rec.func.params, 
                      pb = typeb->rec.func.params; pa && pb;
                         pa = pa->next, pb = pb->next)
-                    if (!is_same_type(pa->type, pb->type))
+                    if (!is_same_type(pa->type, pb->type, 0))
                         return 0;
                 if (pa || pb) 
                     return 0; /* different number of parameters */
                 return is_same_type(typea->rec.func.ret,
-                                    typeb->rec.func.ret);
+                                    typeb->rec.func.ret, 0);
             }
         case CINT: case CCHAR: case CVOID:
             ;
@@ -366,10 +380,10 @@ static CVar_t var_merge(CVar_t new, CScope_t scope) {
         return new;
     else
         old = cscope_lookup_var(scope, new->name);
-    if (!is_same_type(old->type, new->type) || scope->lvl > 0)
+    if (!is_same_type(old->type, new->type, 0) || scope->lvl > 0)
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
-        ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast);
     }
     free(new);
     return old;
@@ -426,13 +440,20 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
             if (!cscope_push_var(scope, var))
             {
                 sprintf(err_buff, "redefinition of parameter '%s'", var->name);
-                ERROR(var->ast->loc.row, var->ast->loc.col);
+                ERROR(var->ast);
             }
         var->next = params;
         params = var;
     }
     return params;
 }
+
+#define CHECK_CVOID(name, ast) \
+    if (type_spec->type == CVOID) \
+    do { \
+        sprintf(err_buff, "variable or field '%s' declared void", name); \
+        ERROR(ast); \
+    } while (0)
 
 CVar_t semantics_p_declr(CNode *p, CType_t type_spec) {
     /* deal with pointer prefix */
@@ -444,6 +465,7 @@ CVar_t semantics_p_declr(CNode *p, CType_t type_spec) {
         ptype = type_spec;              /* filled by type spec */
         name = p->rec.strval;
         ast = p;
+        CHECK_CVOID(name, ast);
     }
     else
     {
@@ -534,7 +556,7 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
             if (!ctable_insert(ct, var->name, var, 0))
             {
                 sprintf(err_buff, "duplicate member '%s'", var->name);
-                ERROR(var->ast->loc.row, var->ast->loc.col);
+                ERROR(var->ast);
             }
         }
     }
@@ -570,7 +592,173 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
     {
         /* TODO: useless typename warning */
         sprintf(err_buff, "useless declaration");
-        WARNING(type->ast->loc.row, type->ast->loc.col);
+        WARNING(type->ast);
+    }
+    return res;
+}
+
+#define INCOMP_TYPE(ast) \
+    do { \
+        sprintf(err_buff, "incompatible types when assigning"); \
+        ERROR(ast); \
+    } while (0)
+
+ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
+    switch (lhs.type->type)
+    {
+        case CSTRUCT: case CUNION:
+            if (!is_same_type(lhs.type, rhs.type, 0))
+                INCOMP_TYPE(ast);
+            break;
+        case CARR: case CFUNC: /* constant */
+            INCOMP_TYPE(ast);
+            break;
+        case CINT: case CCHAR:
+            switch (rhs.type->type)
+            {
+                case CINT: case CCHAR: ; break; /* ok */
+                case CPTR:
+                    sprintf(err_buff, "assignment makes integer from pointer without a cast");
+                    WARNING(ast);
+                break;
+                default: INCOMP_TYPE(ast);
+            }
+            break;
+        case CPTR:
+            switch (rhs.type->type)
+            {
+                case CPTR:
+                    if (!is_same_type(lhs.type->rec.ref, rhs.type->rec.ref, 1))
+                    {
+                        sprintf(err_buff, "assignment from incompatible pointer type");
+                        WARNING(ast);
+                    }
+                    break;
+                case CINT: case CCHAR:
+                    sprintf(err_buff, "assignment makes pointer from integer without a cast");
+                    WARNING(ast);
+                break;
+                default: INCOMP_TYPE(ast);
+            }
+            break;
+        default: assert(0);
+    }
+    return lhs;
+}
+
+ExpType exp_check_two_int(ExpType op1, ExpType op2, CNode *ast) {
+    int t1 = op1.type->type,
+        t2 = op2.type->type;
+    if (!((t1 == CINT || t1 == CCHAR) && (t2 == CINT || t2 == CCHAR)))
+    {
+        sprintf(err_buff, "invalid operands to binary operator");
+        ERROR(ast);
+    }
+    return op1;
+}
+
+ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
+    int t1 = op1.type->type,
+        t2 = op2.type->type;
+    if (!sub && t2 == CPTR) 
+    {
+        /* place the pointer type in the first place */
+        int t = t1;
+        ExpType te = op1;
+
+        t1 = t2;
+        t2 = t;
+
+        op1 = op2;
+        op2 = te;
+
+        CNode *n1 = ast->chd;
+        CNode *n2 = n1->next;
+        n2->next = n1;
+        n1->next = NULL;
+        ast->chd = n2;
+    }
+    if (!((t1 == CINT || t1 == CCHAR || t1 == CPTR) &&
+            (t2 == CINT || t2 == CCHAR)))
+    {
+        sprintf(err_buff, "invalid operands to binary operator");
+        ERROR(ast);
+    }
+    return op1;
+}
+
+ExpType semantics_exp(CNode *, CScope_t);
+ExpType exp_check_ass(CNode *p, CScope_t scope) {
+    ExpType lhs = semantics_exp(p->chd, scope),
+            rhs = semantics_exp(p->chd->next, scope);
+    if (!lhs.lval)
+    {
+        sprintf(err_buff, "lvalue required as left operand of assignment");
+        ERROR(p);
+    }
+    switch (p->rec.subtype)
+    {
+        case '=' : return exp_check_aseq(lhs, rhs, p);
+        case ASS_MUL: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        case ASS_DIV: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p); 
+        case ASS_MOD: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p); 
+        case ASS_ADD: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, 0), p);
+        case ASS_SUB: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, 1), p);
+        case ASS_SHL: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        case ASS_SHR: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        case ASS_AND: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        case ASS_XOR: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        case ASS_OR: return exp_check_aseq(lhs, exp_check_two_int(lhs, rhs, p), p);
+        default: assert(0);
+    }
+}
+
+ExpType semantics_exp(CNode *p, CScope_t scope) {
+    ExpType res;
+    switch (p->type)
+    {
+        case ID:
+            if (!(p->ext.var = cscope_lookup_var(scope, p->rec.strval)))
+            {
+                sprintf(err_buff, "'%s' undeclared", p->rec.strval);
+                ERROR(p);
+            }
+            res.type = p->ext.var->type;
+            res.lval = 1;
+            break;
+        case INT:
+            p->ext.type = res.type = basic_type_int;
+            res.lval = 0;
+            break;
+        case CHAR:
+            res.type = basic_type_char;
+            res.lval = 0;
+            break;
+        case STR:
+            {
+                CType_t type = ctype_create("", CPTR, NULL);
+                type->rec.ref = basic_type_char;
+                p->ext.type = res.type = type;
+            }
+        case EXP:
+            switch (p->rec.subtype)
+            {
+                case '=' : 
+                case ASS_MUL:
+                case ASS_DIV:
+                case ASS_MOD:
+                case ASS_ADD:
+                case ASS_SUB:
+                case ASS_SHL:
+                case ASS_SHR:
+                case ASS_AND:
+                case ASS_XOR:
+                case ASS_OR:
+                    return exp_check_ass(p, scope);
+                default: assert(0);
+            }
+            break;
+        default: assert(0);
     }
     return res;
 }
@@ -582,6 +770,7 @@ CVar_t semantics_stmt(CNode *p, CScope_t scope) {
     {
         case STMT_EXP: 
             /* TODO: expression handle */
+            semantics_exp(p->chd, scope);
             break;
         case STMT_COMP:
             {
@@ -676,17 +865,17 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
     if (funco->type != CFUNC)
     {
         sprintf(err_buff, "conflicting types of '%s'", res->name);
-        ERROR(res->ast->loc.row, res->ast->loc.col);
+        ERROR(res->ast);
     }
     else if (funco->rec.func.body)
     {
         sprintf(err_buff, "redefintion of function '%s'", res->name);
-        ERROR(res->ast->loc.row, res->ast->loc.col);
+        ERROR(res->ast);
     }
-    else if (!is_same_type(funco, res->type))
+    else if (!is_same_type(funco, res->type, 0))
     {
         sprintf(err_buff, "function defintion does not match the prototype");
-        ERROR(res->ast->loc.row, res->ast->loc.col);
+        ERROR(res->ast);
     }
     funco->rec.func.local = res->type->rec.func.local;
     funco->rec.func.body = res->type->rec.func.body;
@@ -705,10 +894,13 @@ void semantics_check_(CNode *p, CScope_t scope) {
 
 void semantics_check(CNode *ast) {
     CScope_t scope = cscope_create();
+    basic_type_int = ctype_create("int", CINT, NULL);
+    basic_type_char = ctype_create("char", CCHAR, NULL);
+    basic_type_void = ctype_create("void", CVOID, NULL);
     /* add top-level basic types */
-    cscope_push_type(scope, ctype_create("int", CINT, NULL));
-    cscope_push_type(scope, ctype_create("char", CCHAR, NULL));
-    cscope_push_type(scope, ctype_create("void", CVOID, NULL));
+    cscope_push_type(scope, basic_type_int);
+    cscope_push_type(scope, basic_type_char);
+    cscope_push_type(scope, basic_type_void);
     /* check all definitions and declarations */
     for (ast = ast->chd; ast; ast = ast->next)
     {
