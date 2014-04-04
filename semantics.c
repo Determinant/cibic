@@ -6,7 +6,8 @@
 #include "ast.h"
 #define NEW(type) ((type *)malloc(sizeof(type)))
 #define CHECK_TYPE(p, _type) assert(p->type == _type)
-#define EXIT_ERROR(row, col) print_error(err_buff, NULL, row, col, 0)
+#define ERROR(row, col) print_error(err_buff, NULL, row, col, 0)
+#define WARNING(row, col) print_error(err_buff, NULL, row, col, 1)
 
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
@@ -189,13 +190,13 @@ unsigned int bkdr_hash(const char *str) {
 
 const char *ctable_cvar_print(void *var) {
     static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s", ((CVar_t )var)->name);
+    sprintf(buff, "%s@%lx", ((CVar_t )var)->name, (size_t)var);
     return buff;
 }
 
 const char *ctable_ctype_print(void *type) {
     static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s", ((CType_t )type)->name);
+    sprintf(buff, "%s@%lx", ((CType_t )type)->name, (size_t)type);
     return buff;
 }
 
@@ -224,7 +225,7 @@ CType_t ctype_create(const char *name, int type, CNode *ast) {
 void ctype_print(CType_t);
 
 void cvar_print(CVar_t cv) {
-    fprintf(stderr, "[var:%s]->", cv->name);
+    fprintf(stderr, "[var@%lx:%s]->", (size_t)cv, cv->name);
     ctype_print(cv->type);
 }
 
@@ -239,8 +240,10 @@ void ctype_print(CType_t ct) {
                 CTable_t f = ct->rec.fields;
                 int i;
                 CTNode *fn; 
-                fprintf(stderr, "[%s:(name:%s|fields:", ct->type == CSTRUCT ? "struct" : "union"
-                                                , ct->name);
+                fprintf(stderr, "[%s@%lx:(name:%s|fields:",
+                        ct->type == CSTRUCT ? "struct" : "union",
+                        (size_t)ct,
+                        ct->name);
                 if (f)
                 {
                     int first = 1;
@@ -298,14 +301,14 @@ static CType_t type_merge(CType_t new, CScope_t scope) {
     if (old->type != new->type) 
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
-        EXIT_ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast->loc.row, new->ast->loc.col);
     }
     if (!new->rec.fields)
         return old;
     if (old->rec.fields)
     {
         sprintf(err_buff, "redefinition of '%s'", new->name);
-        EXIT_ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast->loc.row, new->ast->loc.col);
     }
     /* complete the type */
     old->next = new->next;
@@ -358,7 +361,7 @@ static CVar_t var_merge(CVar_t new, CScope_t scope) {
     if (!is_same_type(old->type, new->type) || scope->lvl > 0)
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
-        EXIT_ERROR(new->ast->loc.row, new->ast->loc.col);
+        ERROR(new->ast->loc.row, new->ast->loc.col);
     }
     free(new);
     return old;
@@ -415,7 +418,7 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
             if (!cscope_push_var(scope, var))
             {
                 sprintf(err_buff, "redefinition of parameter '%s'", var->name);
-                EXIT_ERROR(var->ast->loc.row, var->ast->loc.col);
+                ERROR(var->ast->loc.row, var->ast->loc.col);
             }
         var->next = params;
         params = var;
@@ -522,7 +525,7 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
             if (!ctable_insert(ct, var->name, var, 0))
             {
                 sprintf(err_buff, "duplicate member '%s'", var->name);
-                EXIT_ERROR(var->ast->loc.row, var->ast->loc.col);
+                ERROR(var->ast->loc.row, var->ast->loc.col);
             }
         }
     }
@@ -541,10 +544,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             cscope_push_type(scope, type); break;
         case CINT:
         case CCHAR:
-        case CVOID:
-            /* TODO: useless typename warning */
-            ;
-            break;
+        case CVOID: break;
         default: assert(0);
     }
     if (init->chd->type != NOP)
@@ -558,6 +558,12 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             var->next = res;
             res = var;
         }
+    }
+    else
+    {
+        /* TODO: useless typename warning */
+        sprintf(err_buff, "useless declaration");
+        WARNING(type->ast->loc.row, type->ast->loc.col);
     }
     return res;
 }
@@ -684,4 +690,20 @@ void semantics_check(CNode *ast) {
         }
     }
     cscope_debug_print(scope);
+    {
+        CTNode *p;
+        int i;
+        for (i = 0; i < MAX_TABLE_SIZE; i++)
+            for (p = scope->tvar->head[i]; p; p = p->next)
+            {
+                cvar_print((CVar_t)p->val);
+                fprintf(stderr, "\n");
+            }
+        for (i = 0; i < MAX_TABLE_SIZE; i++)
+            for (p = scope->ttype->head[i]; p; p = p->next)
+            {
+                ctype_print((CType_t)p->val);
+                fprintf(stderr, "\n");
+            }
+    }
 }
