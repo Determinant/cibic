@@ -752,6 +752,50 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
     return op1; /* int or pointer */
 }
 
+ExpType exp_check_int(ExpType op1, CNode *ast) {
+    if (!IS_INT(op1.type->type))
+    {
+        sprintf(err_buff, "wrong type argument to unary operator");
+        ERROR(ast);
+    }
+    op1.lval = 0;
+    return op1;
+}
+
+ExpType exp_check_scalar(ExpType op1, CNode *ast) {
+    if (!IS_SCALAR(op1.type->type))
+    {
+        sprintf(err_buff, "wrong type argument to unary operator");
+        ERROR(ast);
+    }
+    op1.lval = 0;
+    return op1;
+}
+
+ExpType exp_check_deref(ExpType op1, CNode *ast) {
+    if (op1.type->type != CPTR)
+    {
+        sprintf(err_buff, "invalid type argument of unary '*'");
+        ERROR(ast);
+    }
+    op1.lval = 1;   /* deref changes exp to lval */
+    op1.type = op1.type->rec.ref;
+    return op1;
+}
+
+ExpType exp_check_ref(ExpType op1, CNode *ast) {
+    ExpType res;
+    if (!op1.lval)
+    {
+        sprintf(err_buff, "lvalue required as unary '&' operand");
+        ERROR(ast);
+    }
+    res.lval = 0;
+    res.type = ctype_create("", CPTR, ast);
+    res.type->rec.ref = op1.type;
+    return res;
+}
+
 ExpType semantics_exp(CNode *, CScope_t);
 
 ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
@@ -890,7 +934,6 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case OPT_SHR:
                     case '|':
                     case '^':
-                    case '&':
                               res = exp_check_bitwise(op1, op2, p);
                               break;
                     case OPT_EQ:
@@ -901,19 +944,50 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case OPT_GE:
                               res = exp_check_equality(op1, op2, p);
                               break;
-                    case '+':
-                              res = exp_check_add(op1, op2, p, 0);
-                              break;
-                    case '-':
-                              res = exp_check_add(op1, op2, p, 1);
-                              break;
-                    case '*': case '/': case '%':
+                    case '/': case '%':
                               res = exp_check_arith(op1, op2, p);
                               break;
                     case EXP_CAST:
                               res.type = semantics_type_name(p->chd, scope);
                               res.lval = 0;
                               break;
+                    case '&':
+                              if (p->chd->next)
+                                  res = exp_check_bitwise(op1, op2, p);
+                              else
+                                  res = exp_check_ref(op1, p);
+                              break;
+                    case '*': 
+                              if (p->chd->next)
+                                  res = exp_check_arith(op1, op2, p);
+                              else
+                                  res = exp_check_deref(op1, p);
+                              break;
+                    case '+':
+                              if (p->chd->next)
+                                  res = exp_check_add(op1, op2, p, 0);
+                              else
+                              {
+                                  res = op1;
+                                  res.lval = 0;
+                              }
+                              break;
+                    case '-':
+                              if (p->chd->next)
+                                  res = exp_check_add(op1, op2, p, 1);
+                              else
+                              {
+                                  res = op1;
+                                  res.lval = 0;
+                              }
+                              break;
+                    case '~':
+                              res = exp_check_int(op1, p);
+                              break;
+                    case '!':
+                              res = exp_check_scalar(op1, p);
+                              break;
+
                     default: assert(0);
                 }
             }
