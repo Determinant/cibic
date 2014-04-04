@@ -12,10 +12,11 @@ typedef struct CVar{
     struct CVar *next;    /* next in the linked list */
     struct CType *type;
     int offset;
+    CNode *ast;
 } CVar;
 
 typedef CVar *CVar_t;
-CVar_t cvar_create(const char *name, struct CType *type);
+CVar_t cvar_create(const char *name, struct CType *type, CNode *ast);
 void cvar_print(CVar_t cv);
 
 typedef struct CType {
@@ -45,10 +46,11 @@ typedef struct CType {
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */
+    CNode *ast;
 } CType;
 
 typedef CType *CType_t;
-CType_t ctype_create(const char *name, int type);
+CType_t ctype_create(const char *name, int type, CNode *ast);
 void ctype_debug_print(CType_t ct);
 
 typedef unsigned int (*Hashfunc_t) (const char *);

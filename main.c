@@ -15,17 +15,22 @@ int yywrap() {
     return 1;
 }
 
-void print_error(char *err_msg, int row, int col) {
+void print_error(char *err_msg, char *lb, int row, int col, int warn) {
     *lptr = '\0';
-    fprintf(stderr, "%d:%d: %s\n%s\n", 
-            row, col, err_msg, linebuff);
-    while (--col) putchar(' ');
-    puts("^");
+    fprintf(stderr, "%d:%d: %s: %s\n",
+            row, col, warn ? "warning" : "error", err_msg);
+    if (lb)
+    {
+        fprintf(stderr, "%s\n", lb);
+        while (--col) fprintf(stderr, "%c", ' ');
+        fprintf(stderr, "^\n");
+    }
+    if (!warn) exit(1);
 }
 
 int yyerror(char *err_msg) {
-    print_error(err_msg, 
-            yylloc.first_line, yylloc.first_column);
+    print_error(err_msg, linebuff,
+            yylloc.first_line, yylloc.first_column, 0);
     return 0;
 }
 
@@ -35,20 +40,12 @@ void print_ast() {
     else
         fprintf(stderr, "AST for stdin\n");
     yyparse();
-    if (ast_root)
-    {
-        cnode_debug_print(ast_root, 1);
-    }
-    else exit(1);
+    cnode_debug_print(ast_root, 1);
 }
 
 void print_sem() {
     yyparse();
-    if (ast_root)
-    {
-        semantics_check(ast_root);
-    }
-    else exit(1);
+    semantics_check(ast_root);
 }
 
 void print_help() {

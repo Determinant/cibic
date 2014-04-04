@@ -51,7 +51,7 @@ typedef struct CNode {
     } ext;
     struct CNode *chd, *next;
     /* For error reporting */
-    struct Location {
+    struct {
         int row, col;
     } loc;
 } CNode;
