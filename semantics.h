@@ -43,6 +43,7 @@ typedef struct CType {
             CVar *params;
             CVar *local;
             struct CType *ret;
+            CNode *body;
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */

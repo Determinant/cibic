@@ -292,25 +292,32 @@ void ctype_print(CType_t ct) {
     }
 }
 
-static CType_t type_merge(CType_t new, CScope_t scope) {
-    CType_t old;
-    if (cscope_push_type(scope, new))
+static CType_t struct_type_merge(CType_t new, CScope_t scope) {
+    /* Note: we shall try to lookup first instead of pushing !! */
+    CType_t old = cscope_lookup_type(scope, new->name);
+    if (!old) /* create it if it does not exist */
+    {
+        cscope_push_type(scope, new);
         return new;
-    else 
-        old = cscope_lookup_type(scope, new->name);
-    if (old->type != new->type) 
+    } /* otherwise we have it */
+    if (old->type != new->type) /* not a struct or union */
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
         ERROR(new->ast->loc.row, new->ast->loc.col);
     }
-    if (!new->rec.fields)
+    /* otherwise it is a struct or union */
+    if (!new->rec.fields) /* use the old definition */
         return old;
-    if (old->rec.fields)
+    /* otherwise there's a completion definition */
+    if (cscope_push_type(scope, new)) /* try to push the defintion */
+        return new;
+    /* conflict appear */
+    if (old->rec.fields) /* if the old one is complete */
     {
         sprintf(err_buff, "redefinition of '%s'", new->name);
         ERROR(new->ast->loc.row, new->ast->loc.col);
     }
-    /* complete the type */
+    /* otherwise incomplete, thus complete the type */
     old->next = new->next;
     old->rec.fields = new->rec.fields;
     old->ast = new->ast;
@@ -343,7 +350,8 @@ int is_same_type(CType_t typea, CType_t typeb) {
                         return 0;
                 if (pa || pb) 
                     return 0; /* different number of parameters */
-                break;
+                return is_same_type(typea->rec.func.ret,
+                                    typeb->rec.func.ret);
             }
         case CINT: case CCHAR: case CVOID:
             ;
@@ -389,7 +397,7 @@ CType_t semantics_type_spec(CNode *p, CScope_t scope) {
                     type->rec.fields = semantics_fields(fields, scope);
 
                 if (id->type != NOP)
-                    type = type_merge(type, scope);
+                    type = struct_type_merge(type, scope);
             }
             break;
         default: assert(0);
@@ -474,6 +482,7 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope) {
                 /* incomplete type */
                 type->rec.func.local = NULL;
                 type->rec.func.ret = p_declr->type;
+                type->rec.func.body = NULL;         /* not a definition */
                 name = p_declr->name;
                 ast = p_declr->ast;
                 free(p_declr);
@@ -537,15 +546,12 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
     CNode *init = p->chd->next;
     CType_t type = semantics_type_spec(p->chd, scope);
     CVar_t res = NULL;
-    switch (type->type)
+    int useful = 0;
+    if ((type->type == CSTRUCT || type->type == CUNION) && 
+        (*type->name) != '\0')
     {
-        case CSTRUCT: 
-        case CUNION:
-            cscope_push_type(scope, type); break;
-        case CINT:
-        case CCHAR:
-        case CVOID: break;
-        default: assert(0);
+        cscope_push_type(scope, type);
+        useful = 1;
     }
     if (init->chd->type != NOP)
     {
@@ -558,8 +564,9 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             var->next = res;
             res = var;
         }
+        useful = 1;
     }
-    else
+    if (!useful)
     {
         /* TODO: useless typename warning */
         sprintf(err_buff, "useless declaration");
@@ -647,19 +654,44 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 CVar_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
     CNode *chd = p->chd->next;
-    CType_t func = ctype_create(chd->rec.strval, CFUNC, p);
-    CVar_t res;
+    CType_t func = ctype_create(chd->rec.strval, CFUNC, p), funco;
+    CVar_t res, old;
 
     chd = chd->next;
     func->rec.func.ret = semantics_type_spec(p->chd, scope);   /* check return type */
     cscope_enter(scope);                                       /* enter into function local scope */
     func->rec.func.params = semantics_params(chd, scope);      /* check params */
     func->rec.func.local = semantics_comp(chd->next, scope);   /* check comp */
+    func->rec.func.body = chd->next;
     cscope_exit(scope);                                        /* exit from local scope */
     res = cvar_create(func->name, func, p);
-    if (!cscope_push_var(scope, res))
-        puts("fuck func name");
-    return res;
+
+    if (cscope_push_var(scope, res))
+        return res;
+    else
+    {
+        old = cscope_lookup_var(scope, res->name);
+        funco = old->type;
+    }
+    if (funco->type != CFUNC)
+    {
+        sprintf(err_buff, "conflicting types of '%s'", res->name);
+        ERROR(res->ast->loc.row, res->ast->loc.col);
+    }
+    else if (funco->rec.func.body)
+    {
+        sprintf(err_buff, "redefintion of function '%s'", res->name);
+        ERROR(res->ast->loc.row, res->ast->loc.col);
+    }
+    else if (!is_same_type(funco, res->type))
+    {
+        sprintf(err_buff, "function defintion does not match the prototype");
+        ERROR(res->ast->loc.row, res->ast->loc.col);
+    }
+    funco->rec.func.local = res->type->rec.func.local;
+    funco->rec.func.body = res->type->rec.func.body;
+    free(res);
+    return old;
 }
 
 void semantics_check_(CNode *p, CScope_t scope) {
