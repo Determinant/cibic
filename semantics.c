@@ -427,6 +427,33 @@ CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
             scope);
 }
 
+CType_t semantics_type_name(CNode *p, CScope_t scope) {
+    CNode *t, *ast;
+    CType_t tt, type;
+    if (p->type == TYPE_SPEC) 
+    {
+        type = semantics_type_spec(p, scope);
+        ast = p;
+    }
+    else
+    {
+        type = ctype_create("", CPTR, p); /* pointer */
+        for (t = p, tt = type;; t = t->chd)
+        {
+            if (t->chd->type == TYPE_SPEC)
+            {
+                tt->rec.ref = semantics_type_spec(t->chd, scope);
+                ast = t;
+                break;
+            }
+            tt->rec.ref = ctype_create("", CPTR, t);
+            tt = tt->rec.ref;
+        }
+    }
+    type->ast = ast;
+    return type;
+}
+
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
     p = p->chd;
@@ -603,7 +630,18 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         ERROR(ast); \
     } while (0)
 
+#define NOT_IGNORE_VOID(et, ast) \
+    if (et.type->type == CVOID) \
+        do \
+        { \
+            sprintf(err_buff, "void value not ignored as it ought to be"); \
+            ERROR(ast); \
+        } while (0)
+
+
 ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
+    NOT_IGNORE_VOID(lhs, ast);
+    NOT_IGNORE_VOID(rhs, ast);
     switch (lhs.type->type)
     {
         case CSTRUCT: case CUNION:
@@ -654,6 +692,8 @@ ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
+    NOT_IGNORE_VOID(op1, ast);
+    NOT_IGNORE_VOID(op2, ast);
     res.lval = 0;
     res.type = basic_type_int;
     if (!(IS_ARITH(t1) && IS_ARITH(t2)))
@@ -668,6 +708,8 @@ ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
+    NOT_IGNORE_VOID(op1, ast);
+    NOT_IGNORE_VOID(op2, ast);
     res.lval = 0;
     res.type = basic_type_int;
     if (!(IS_INT(t1) && IS_INT(t2)))
@@ -681,6 +723,8 @@ ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *ast) {
 ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
     int t1 = op1.type->type,
         t2 = op2.type->type;
+    NOT_IGNORE_VOID(op1, ast);
+    NOT_IGNORE_VOID(op2, ast);
     if (!sub && t2 == CPTR) 
     {
         /* place the pointer type in the first place */
@@ -714,6 +758,8 @@ ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
+    NOT_IGNORE_VOID(op1, ast);
+    NOT_IGNORE_VOID(op2, ast);
     res.lval = 0;
     res.type = basic_type_int;
     if (!(IS_SCALAR(t1) && IS_SCALAR(t2)))
@@ -725,6 +771,8 @@ ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
 }
 
 ExpType exp_check_ass(ExpType lhs, ExpType rhs, CNode *p) {
+    NOT_IGNORE_VOID(lhs, p);
+    NOT_IGNORE_VOID(rhs, p);
     if (!lhs.lval)
     {
         sprintf(err_buff, "lvalue required as left operand of assignment");
@@ -753,6 +801,8 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
+    NOT_IGNORE_VOID(op1, ast);
+    NOT_IGNORE_VOID(op2, ast);
     res.lval = 0;
     res.type = basic_type_int;
     if (IS_ARITH(t1) && IS_ARITH(t2))
@@ -792,7 +842,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             res.lval = 1;
             break;
         case INT:
-            p->ext.type = res.type = basic_type_int;
+            res.type = basic_type_int;
             res.lval = 0;
             break;
         case CHAR:
@@ -803,18 +853,22 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             {
                 CType_t type = ctype_create("", CPTR, NULL);
                 type->rec.ref = basic_type_char;
-                p->ext.type = res.type = type;
+                res.type = type;
             }
         case EXP:
             {
-                ExpType op1 = semantics_exp(p->chd, scope);
+                ExpType op1;
                 ExpType op2;
-                if (p->chd->next)
-                    op2 = semantics_exp(p->chd->next, scope);
+                if (p->rec.subtype != EXP_CAST)
+                {
+                    op1 = semantics_exp(p->chd, scope);
+                    if (p->chd->next)
+                        op2 = semantics_exp(p->chd->next, scope);
+                }
                 switch (p->rec.subtype)
                 {
                     /* following cases are binary expressions */
-                    case ',': return op2;
+                    case ',': res = op2; break;
                     case '=' : 
                     case ASS_MUL:
                     case ASS_DIV:
@@ -826,20 +880,47 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case ASS_AND:
                     case ASS_XOR:
                     case ASS_OR:
-                              return exp_check_ass(op1, op2, p);
+                              res = exp_check_ass(op1, op2, p);
+                              break;
                     case OPT_OR:
                     case OPT_AND:
-                              return exp_check_logical(op1, op2, p);
-                    case '|': case '^': case '&':
-                              return exp_check_bitwise(op1, op2, p);
-                    case OPT_EQ: case OPT_NE:
-                              return exp_check_equality(op1, op2, p);
+                              res = exp_check_logical(op1, op2, p);
+                              break;
+                    case OPT_SHL:
+                    case OPT_SHR:
+                    case '|':
+                    case '^':
+                    case '&':
+                              res = exp_check_bitwise(op1, op2, p);
+                              break;
+                    case OPT_EQ:
+                    case OPT_NE:
+                    case '<':
+                    case '>' :
+                    case OPT_LE:
+                    case OPT_GE:
+                              res = exp_check_equality(op1, op2, p);
+                              break;
+                    case '+':
+                              res = exp_check_add(op1, op2, p, 0);
+                              break;
+                    case '-':
+                              res = exp_check_add(op1, op2, p, 1);
+                              break;
+                    case '*': case '/': case '%':
+                              res = exp_check_arith(op1, op2, p);
+                              break;
+                    case EXP_CAST:
+                              res.type = semantics_type_name(p->chd, scope);
+                              res.lval = 0;
+                              break;
                     default: assert(0);
                 }
             }
             break;
         default: assert(0);
     }
+    p->ext.type = res.type;
     return res;
 }
 
