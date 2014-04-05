@@ -9,7 +9,7 @@ Build Requirements
 
 Features
 ---------
-- Complex declaration support (`int (*a)[10]`, `int (*f)()`, `int (*g(int ***e[10]))()`, etc.)
+- Complex declaration support (``int (*a)[10]``, ``int (*f)()``, ``int (*g(int ***e[10]))()``, etc.)
 - Forward declaration
 - Sophisticated error reporting
 - User-friendly AST printing
