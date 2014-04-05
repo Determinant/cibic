@@ -838,7 +838,7 @@ ExpType exp_check_sizeof(ExpType op1, CNode *ast) {
     return op1;
 }
 
-ExpType exp_check_preinc(ExpType op1, CNode *ast) {
+ExpType exp_check_inc(ExpType op1, CNode *ast) {
     if (!IS_SCALAR(op1.type->type))
     {
         sprintf(err_buff, "wrong type argument to increment/decrement");
@@ -1020,6 +1020,9 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 op1.lval = 1;
             }
             break;
+        case OPT_INC: case OPT_DEC:
+            exp_check_inc(op1, p);
+            break;
         default: assert(0);
     }
     return op1;
@@ -1141,7 +1144,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                               res = exp_check_scalar(op1, p);
                               break;
                     case OPT_INC: case OPT_DEC:
-                              res = exp_check_preinc(op1, p);
+                              res = exp_check_inc(op1, p);
                               break;
                     case KW_SIZEOF:
                               res = exp_check_sizeof(op1, p);
