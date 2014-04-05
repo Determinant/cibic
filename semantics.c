@@ -526,7 +526,7 @@ do { \
     ERROR(ast); \
 } while (0)
 
-CVar_t semantics_p_declr(CNode *p, CType_t type_spec) {
+CVar_t semantics_p_declr(CNode *p, CType_t type_spec, int func_def) {
     /* deal with pointer prefix */
     CNode *t, *ast;
     CType_t tt, ptype;
@@ -536,7 +536,7 @@ CVar_t semantics_p_declr(CNode *p, CType_t type_spec) {
         ptype = type_spec;              /* filled by type spec */
         name = p->rec.strval;
         ast = p;
-        CHECK_CVOID(name, ast);
+        if (!func_def) CHECK_CVOID(name, ast);
     }
     else
     {
@@ -562,12 +562,12 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope) {
     const char *name;
     CNode *ast;
     if (p->type == ID || p->rec.subtype == '*')
-        return semantics_p_declr(p, type_spec);
+        return semantics_p_declr(p, type_spec, 0);
     switch (p->rec.subtype)
     {
         case DECLR_FUNC: 
             {
-                CVar_t p_declr = semantics_p_declr(p->chd, type_spec);
+                CVar_t p_declr = semantics_p_declr(p->chd, type_spec, 1);
                 type = ctype_create("", CFUNC, p); /* function declr */
                 cscope_enter(scope);
                 type->rec.func.params = semantics_params(p->chd->next, scope);
@@ -592,7 +592,7 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope) {
                     tt->rec.arr.len = t->chd->next->rec.intval;     /* array length */
                     if (t->chd->type == ID || t->chd->rec.subtype == '*')
                     {
-                        CVar_t p_declr = semantics_p_declr(t->chd, type_spec);
+                        CVar_t p_declr = semantics_p_declr(t->chd, type_spec, 0);
                         tt->rec.arr.elem = p_declr->type;
                         name = p_declr->name;
                         ast = p_declr->ast;
@@ -966,7 +966,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 sprintf(err_buff, "subscripted value is neither array nor pointer");
                 ERROR(p);
             }
-            op2 = semantics_exp(post, scope);
+            op2 = semantics_exp(post->chd, scope);
             t2 = op2.type->type;
             if (!IS_INT(t2))
             {
@@ -1014,6 +1014,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                     sprintf(err_buff, "struct/union has no member named '%s'", post->chd->rec.strval);
                     ERROR(p);
                 }
+                p->ext.var = fv;
                 op1.type = fv->type;
                 op1.lval = 1;
             }
@@ -1042,6 +1043,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                     sprintf(err_buff, "struct/union has no member named '%s'", post->chd->rec.strval);
                     ERROR(p);
                 }
+                p->ext.var = fv;
                 op1.type = fv->type;
                 op1.lval = 1;
             }
@@ -1081,6 +1083,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 type->rec.ref = basic_type_char;
                 res.type = type;
             }
+            break;
         case EXP:
             {
                 ExpType op1;
@@ -1181,7 +1184,9 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case EXP_POSTFIX:
                         res = exp_check_postfix(p, scope);
                         break;
-                    default: assert(0);
+                    default: 
+                        printf("%d\n", p->rec.subtype);
+                        assert(0);
                 }
             }
             break;
@@ -1209,8 +1214,13 @@ CVar_t semantics_if(CNode *p, CScope_t scope) {
     cscope_exit(scope);
     if (body2->type != NOP)
     {
+        CVar_t t;
         cscope_enter(scope);
-        res->next = semantics_stmt(p->chd->next->next, scope);
+        if ((t = semantics_stmt(p->chd->next->next, scope)))
+        {
+            t->next = res;
+            res = t;
+        }
         cscope_exit(scope);
     }
     return res;
@@ -1263,13 +1273,17 @@ CVar_t semantics_return(CNode *p, CScope_t scope) {
     CType_t rt = scope->func->rec.func.ret;
     if (p->chd->type != NOP)
     {
+        ExpType t = semantics_exp(p->chd, scope);
         if (rt->type == CVOID)
         {
-            sprintf(err_buff, "'return' with a value, in function returning void");
-            WARNING(p->chd);
+            if (t.type->type != CVOID)
+            {
+                sprintf(err_buff, "'return' with a value, in function returning void");
+                WARNING(p->chd);
+            }
         }
-        semantics_exp(p->chd, scope);
-        exp_check_aseq_(rt, p->chd->ext.type, p->chd);
+        else
+            exp_check_aseq_(rt, p->chd->ext.type, p->chd);
     }
     return NULL;
 }
@@ -1340,7 +1354,7 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 
 CVar_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
-    CVar_t head = semantics_p_declr(p->chd->next, semantics_type_spec(p->chd, scope));
+    CVar_t head = semantics_p_declr(p->chd->next, semantics_type_spec(p->chd, scope), 1);
     CType_t func = ctype_create(head->name, CFUNC, p), funco;
     CVar_t res = cvar_create(head->name, func, p), old = NULL;
     CNode *chd = p->chd->next->next;
