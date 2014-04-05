@@ -455,8 +455,8 @@ CVar_t semantics_declr(CNode *, CType_t, CScope_t);
 CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PLAIN_DECL);
     CVar_t var = semantics_declr(p->chd->next,
-            semantics_type_spec(p->chd, scope),
-            scope);
+                                semantics_type_spec(p->chd, scope),
+                                scope);
     if (!type_is_complete(var->type))
     {
         sprintf(err_buff, "parameter '%s' has incomplete type", var->name);
@@ -1368,12 +1368,20 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
     }
 
     scope->func = func;
+    cscope_enter(scope);                                       /* enter function local scope */
     func->rec.func.params = semantics_params(chd, scope);      /* check params */
-    if (cscope_push_var(scope, res))
-        old = res;
-    cscope_enter(scope);                                       /* enter into function local scope */
-    {
+    {   /* Note: here is a dirty hack to forcibly push function definition to
+           the global scope, while all the types specified in parameters retain in local scope.
+           The key point is to make sure semantics_params does not push any var */
+        CSNode *ntop = scope->top;
         CVar_t p;
+        scope->top = ntop->next;
+        scope->lvl--;
+        if (cscope_push_var(scope, res))
+            old = res;
+        scope->top = ntop;
+        scope->lvl++;
+
         for (p = func->rec.func.params; p; p = p->next)
             cscope_push_var(scope, p);
     }
