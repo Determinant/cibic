@@ -9,6 +9,7 @@ Build Requirements
 
 Features
 ---------
+- Complex pointer support
 - User-friendly AST printing
 - More sophisticated error reporting
 - Small memory footprint
