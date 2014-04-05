@@ -345,19 +345,8 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     return old;
 }
 
-int is_same_type(CType_t typea, CType_t typeb, int arr2ptr) {
+int is_same_type(CType_t typea, CType_t typeb) {
     if (typea == typeb) return 1;
-    if (arr2ptr)
-        do {
-            int ta = typea->type, tb = typeb->type;
-            if (ta == CPTR) typea = typea->rec.ref;
-            else if (ta == CARR) typea = typea->rec.arr.elem;
-            else break;
-            if (tb == CPTR) typeb = typeb->rec.ref;
-            else if (tb == CARR) typeb = typeb->rec.arr.elem;
-            else break;
-            return is_same_type(typea, typeb, 0);
-        } while (0);
     if (typea->type != typeb->type) return 0;
     switch (typea->type)
     {
@@ -366,23 +355,20 @@ int is_same_type(CType_t typea, CType_t typeb, int arr2ptr) {
         case CARR:
             if (typea->rec.arr.len != typeb->rec.arr.len)
                 return 0;
-            return is_same_type(typea->rec.arr.elem,
-                    typeb->rec.arr.elem, 0);
+            return is_same_type(typea->rec.arr.elem, typeb->rec.arr.elem);
         case CPTR:
-            return is_same_type(typea->rec.ref,
-                    typeb->rec.ref, 0);
+            return is_same_type(typea->rec.ref, typeb->rec.ref);
         case CFUNC:
             {
                 CVar_t pa, pb;
                 for (pa = typea->rec.func.params, 
                         pb = typeb->rec.func.params; pa && pb;
                         pa = pa->next, pb = pb->next)
-                    if (!is_same_type(pa->type, pb->type, 0))
+                    if (!is_same_type(pa->type, pb->type))
                         return 0;
                 if (pa || pb) 
                     return 0; /* different number of parameters */
-                return is_same_type(typea->rec.func.ret,
-                        typeb->rec.func.ret, 0);
+                return is_same_type(typea->rec.func.ret, typeb->rec.func.ret);
             }
         case CINT: case CCHAR: case CVOID:
             ;
@@ -397,7 +383,7 @@ static CVar_t var_merge(CVar_t new, CScope_t scope) {
         return new;
     else
         old = cscope_lookup_var(scope, new->name);
-    if (!is_same_type(old->type, new->type, 0) || scope->lvl > 0)
+    if (!is_same_type(old->type, new->type) || scope->lvl > 0)
     {
         sprintf(err_buff, "conflicting types of '%s'", new->name);
         ERROR(new->ast);
@@ -451,12 +437,12 @@ int type_is_complete(CType_t type) {
     return 1;
 }
 
-CVar_t semantics_declr(CNode *, CType_t, CScope_t);
+CVar_t semantics_declr(CNode *, CType_t, CScope_t, int);
 CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PLAIN_DECL);
     CVar_t var = semantics_declr(p->chd->next,
                                 semantics_type_spec(p->chd, scope),
-                                scope);
+                                scope, 0);
     if (!type_is_complete(var->type))
     {
         sprintf(err_buff, "parameter '%s' has incomplete type", var->name);
@@ -526,87 +512,59 @@ do { \
     ERROR(ast); \
 } while (0)
 
-CVar_t semantics_p_declr(CNode *p, CType_t type_spec, int func_def) {
-    /* deal with pointer prefix */
-    CNode *t, *ast;
-    CType_t tt, ptype;
-    const char *name;
+CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk) {
+    CVar_t type;
     if (p->type == ID) 
     {
-        ptype = type_spec;              /* filled by type spec */
-        name = p->rec.strval;
-        ast = p;
-        if (!func_def) CHECK_CVOID(name, ast);
+        if (!func_chk) CHECK_CVOID(p->rec.strval, p);
+        return cvar_create(p->rec.strval, type_spec, p);
     }
-    else
-    {
-        ptype = ctype_create("", CPTR, p); /* pointer */
-        for (t = p, tt = ptype;; t = t->chd)
-        {
-            if (t->chd->type == ID)
-            {
-                tt->rec.ref = type_spec; /* filled by type spec */
-                name = t->chd->rec.strval;
-                ast = t;
-                break;
-            }
-            tt->rec.ref = ctype_create("", CPTR, t);
-            tt = tt->rec.ref;
-        }
-    }
-    return cvar_create(name, ptype, ast);
-}
 
-CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope) {
-    CType_t type;
-    const char *name;
-    CNode *ast;
-    if (p->type == ID || p->rec.subtype == '*')
-        return semantics_p_declr(p, type_spec, 0);
     switch (p->rec.subtype)
     {
         case DECLR_FUNC: 
             {
-                CVar_t p_declr = semantics_p_declr(p->chd, type_spec, 1);
-                type = ctype_create("", CFUNC, p); /* function declr */
+                CType_t func = ctype_create("", CFUNC, p); /* function declr */
                 cscope_enter(scope);
-                type->rec.func.params = semantics_params(p->chd->next, scope);
+                func->rec.func.params = semantics_params(p->chd->next, scope);
                 cscope_exit(scope);
                 /* incomplete type */
-                type->rec.func.local = NULL;
-                type->rec.func.ret = p_declr->type;
-                type->rec.func.body = NULL;         /* not a definition */
-                name = p_declr->name;
-                ast = p_declr->ast;
-                free(p_declr);
+                func->rec.func.local = NULL;
+                func->rec.func.ret = type_spec;
+                func->rec.func.body = NULL;         /* not a definition */
+                type = semantics_declr(p->chd, func, scope, 1);
+                if (type_spec->type == CARR)
+                {
+                    sprintf(err_buff, "'%s' declared as function returning an array",
+                            type->name);
+                    ERROR(p);
+                }
+                if (type_spec->type == CFUNC)
+                {
+                    sprintf(err_buff, "'%s' declared as function returing a function",
+                            type->name);
+                    ERROR(p);
+                }
             }
             break;
         case DECLR_ARR:
             {
-                CNode *t;
-                CType_t tt;
-                type = ctype_create("", CARR, p); /* array declr */
-                for (t = p, tt = type;; t = t->chd)
-                {
-                    /* TODO: range checking */
-                    tt->rec.arr.len = t->chd->next->rec.intval;     /* array length */
-                    if (t->chd->type == ID || t->chd->rec.subtype == '*')
-                    {
-                        CVar_t p_declr = semantics_p_declr(t->chd, type_spec, 0);
-                        tt->rec.arr.elem = p_declr->type;
-                        name = p_declr->name;
-                        ast = p_declr->ast;
-                        free(p_declr);
-                        break;
-                    }
-                    tt->rec.arr.elem = ctype_create("", CARR, t);
-                    tt = tt->rec.arr.elem;
-                }
+                CType_t arr = ctype_create("", CARR, p);    /* array declr */
+                arr->rec.arr.elem = type_spec;
+                arr->rec.arr.len = p->chd->next->rec.intval;
+                type = semantics_declr(p->chd, arr, scope, 0);
+            }
+            break;
+        case '*':
+            {
+                CType_t ptr = ctype_create("", CPTR, p);    /* pointer */
+                ptr->rec.ref = type_spec;
+                type = semantics_declr(p->chd, ptr, scope, 0);
             }
             break;
         default: assert(0);
     }
-    return cvar_create(name, type, ast);
+    return type;
 }
 
 CTable_t semantics_fields(CNode *p, CScope_t scope) {
@@ -621,8 +579,8 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
         for (; declr; declr = declr->next)
         {
             CVar_t var = semantics_declr(declr, 
-                    semantics_type_spec(p->chd, scope),
-                    scope);
+                                        semantics_type_spec(p->chd, scope),
+                                        scope, 0);
             /* incomplete type checking */
             if (!type_is_complete(var->type))
             {
@@ -657,7 +615,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         for (p = init->chd; p; p = p->next)
         {
             /* TODO: initializer checking */
-            CVar_t var = semantics_declr(p->chd, type, scope);
+            CVar_t var = semantics_declr(p->chd, type, scope, 0);
             if (scope->lvl && !type_is_complete(var->type))
             {
                 sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
@@ -698,7 +656,7 @@ void exp_check_aseq_(CType_t lhs, CType_t rhs, CNode *ast) {
     switch (lhs->type)
     {
         case CSTRUCT: case CUNION:
-            if (!is_same_type(lhs, rhs, 0))
+            if (!is_same_type(lhs, rhs))
                 INCOMP_TYPE(ast);
             break;
         case CARR: case CFUNC: /* constant */
@@ -720,7 +678,7 @@ void exp_check_aseq_(CType_t lhs, CType_t rhs, CNode *ast) {
             switch (rhs->type)
             {
                 case CPTR: case CARR:
-                    if (!is_same_type(lhs->rec.ref, rhs->rec.ref, 1))
+                    if (!is_same_type(lhs->rec.ref, rhs->rec.ref))
                     {
                         sprintf(err_buff, "assignment from incompatible pointer type");
                         WARNING(ast);
@@ -940,7 +898,7 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *ast) {
     }
     if (t1 == CPTR && t2 == CPTR)
     {
-        if (!is_same_type(op1.type->rec.ref, op2.type->rec.ref, 0))
+        if (!is_same_type(op1.type->rec.ref, op2.type->rec.ref))
         {
             sprintf(err_buff, "comparison of distinct pointer types lacks a cast");
             WARNING(ast);
@@ -1354,22 +1312,20 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 
 CVar_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
-    CVar_t head = semantics_p_declr(p->chd->next, semantics_type_spec(p->chd, scope), 1);
-    CType_t func = ctype_create(head->name, CFUNC, p), funco;
+    CVar_t head = semantics_declr(p->chd->next,
+                                semantics_type_spec(p->chd, scope),
+                                scope, 0);
+    CType_t func = head->type, funco;
     CVar_t res = cvar_create(head->name, func, p), old = NULL;
-    CNode *chd = p->chd->next->next;
 
-    func->rec.func.ret = head->type;
-    /* check return type */
-    if (!type_is_complete(head->type))
+    if (!type_is_complete(func->rec.func.ret))
     {
         sprintf(err_buff, "return type is an incomplete type");
-        ERROR(p->chd);
+        ERROR(func->rec.func.ret->ast);
     }
 
     scope->func = func;
     cscope_enter(scope);                                       /* enter function local scope */
-    func->rec.func.params = semantics_params(chd, scope);      /* check params */
     {   /* Note: here is a dirty hack to forcibly push function definition to
            the global scope, while all the types specified in parameters retain in local scope.
            The key point is to make sure semantics_params does not push any var */
@@ -1385,8 +1341,8 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         for (p = func->rec.func.params; p; p = p->next)
             cscope_push_var(scope, p);
     }
-    func->rec.func.local = semantics_comp(chd->next, scope);   /* check comp */
-    func->rec.func.body = chd->next;
+    func->rec.func.local = semantics_comp(p->chd->next->next, scope);   /* check comp */
+    func->rec.func.body = p->chd->next->next;
     cscope_exit(scope);                                        /* exit from local scope */
 
     if (!old)
@@ -1403,7 +1359,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
             sprintf(err_buff, "redefintion of function '%s'", res->name);
             ERROR(res->ast);
         }
-        else if (!is_same_type(funco, res->type, 0))
+        else if (!is_same_type(funco, res->type))
         {
             sprintf(err_buff, "function defintion does not match the prototype");
             ERROR(res->ast);

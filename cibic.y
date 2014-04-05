@@ -19,7 +19,7 @@
 %type<intval> INT_CONST
 %type<strval> IDENTIFIER STR_CONST CHAR_CONST
 %type<intval> additive_operator assignment_operator equality_operator multiplicative_operator relational_operator shift_operator struct_or_union unary_operator
-%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarator_array declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration plain_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression
+%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration direct_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression
 %start program
 %%
 program
@@ -44,15 +44,8 @@ declaration
     }
 
 function_definition
-    : type_specifier plain_declarator '(' parameters ')' compound_statement {
-        $$ = cnode_add_loc(cnode_create_func(
-                            $1, $2, cnode_add_loc(
-                                        cnode_list_wrap(PARAMS, $4), @4), $6), @$);
-    }
-    | type_specifier plain_declarator '(' ')' compound_statement {
-        $$ = cnode_add_loc(cnode_create_func(
-                            $1, $2,
-                            cnode_list_wrap(PARAMS, cnode_create_nop()), $5), @$);
+    : type_specifier declarator compound_statement {
+        $$ = cnode_add_loc(cnode_create_func($1, $2, $3), @$);
     }
 
 parameters
@@ -111,28 +104,26 @@ struct_or_union
 plain_declaration
     : type_specifier declarator { $$ = cnode_add_loc(cnode_create_plain_decl($1, $2), @$); }
 
-declarator
-    : plain_declarator '(' ')' {
+direct_declarator
+    : identifier
+    | '(' declarator ')' { $$ = $2; }
+    | direct_declarator '(' ')' {
         $$ = cnode_add_loc(cnode_create_declr(
                             DECLR_FUNC, 2, $1,
                             cnode_list_wrap(PARAMS, cnode_create_nop())), @$);
     }
-    | plain_declarator '(' parameters ')' {
+    | direct_declarator '(' parameters ')' {
         $$ = cnode_add_loc(cnode_create_declr(
                             DECLR_FUNC, 2, $1,
                             cnode_add_loc(cnode_list_wrap(PARAMS, $3), @3)), @$);
     }
-    | declarator_array
-
-declarator_array
-    : plain_declarator
-    | declarator_array '[' constant_expression ']' {
+    | direct_declarator '[' constant_expression ']' {
         $$ = cnode_add_loc(cnode_create_declr(DECLR_ARR, 2, $1, $3), @$);
     }
 
-plain_declarator
-    : identifier
-    | '*' plain_declarator {
+declarator
+    : direct_declarator
+    | '*' declarator {
         $$ = cnode_add_loc(cnode_create_declr('*', 1, $2), @$); }
 
 statement

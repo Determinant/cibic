@@ -71,6 +71,10 @@ void comma() {
     (b++, a++) * 3;
 }
 
+int complex_pointer() {
+    int (*f(int ***e[10]))();
+}
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */

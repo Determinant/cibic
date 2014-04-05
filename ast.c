@@ -156,20 +156,18 @@ CNode *cnode_create_decl(CNode *type, CNode *init_declrs) {
     return decl;
 }
 
-CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *stmt) {
+CNode *cnode_create_func(CNode *type, CNode *declr, CNode *stmt) {
     CNode *func = NEW_CNODE;
 #ifdef CIBIC_DEBUG
     assert(type->next == NULL);
-    assert(plain_decl->next == NULL);
-    assert(params->next == NULL);
+    assert(declr->next == NULL);
     assert(stmt->next == NULL);
 #endif
     func->type = FUNC_DEF;
     func->next = NULL;
     func->chd = stmt;
-    stmt->next = params;
-    params->next = plain_decl;
-    plain_decl->next = type;
+    stmt->next = declr;
+    declr->next = type;
     return func;
 }
 
@@ -227,7 +225,7 @@ char *cnode_debug_type_repr(CNode *ast) {
     switch (ast->type)
     {
         case PROG:      type = "prog"; break;
-        case FUNC_DEF:  type = "func"; break;
+        case FUNC_DEF:  type = "func_def"; break;
         case DECLS:     type = "prg_decls"; break;
         case FUNCS:     type = "prg_funcs"; break;
         case DECL:      type = "decl"; break;

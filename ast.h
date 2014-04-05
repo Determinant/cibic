@@ -70,7 +70,7 @@ CNode *cnode_create_stmt(int stmt_type, int pnum, ...);
 CNode *cnode_create_initr(int initr_type, CNode *body);
 
 CNode *cnode_create_decl(CNode *type, CNode *init_declrs);
-CNode *cnode_create_func(CNode *type, CNode *plain_decl, CNode *params, CNode *stmt);
+CNode *cnode_create_func(CNode *type, CNode *declr, CNode *stmt);
 CNode *cnode_create_init_declr(CNode *declr, CNode *initr);
 CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs);
 CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr);
