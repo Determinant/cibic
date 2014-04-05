@@ -451,32 +451,6 @@ CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     return var;
 }
 
-CType_t semantics_type_name(CNode *p, CScope_t scope) {
-    CNode *t, *ast;
-    CType_t tt, type;
-    if (p->type == TYPE_SPEC) 
-    {
-        type = semantics_type_spec(p, scope);
-        ast = p;
-    }
-    else
-    {
-        type = ctype_create("", CPTR, p); /* pointer */
-        for (t = p, tt = type;; t = t->chd)
-        {
-            if (t->chd->type == TYPE_SPEC)
-            {
-                tt->rec.ref = semantics_type_spec(t->chd, scope);
-                ast = t;
-                break;
-            }
-            tt->rec.ref = ctype_create("", CPTR, t);
-            tt = tt->rec.ref;
-        }
-    }
-    type->ast = ast;
-    return type;
-}
 
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
@@ -708,6 +682,39 @@ ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
 #define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
 #define IS_ARITH(tt) IS_INT(tt)
 #define IS_SCALAR(tt) (IS_ARITH(tt) || (tt) == CPTR || (tt) == CARR)
+
+CType_t semantics_cast(CNode *p, CScope_t scope) {
+    CNode *t, *ast;
+    CType_t tt, type;
+    if (p->type == TYPE_SPEC) 
+    {
+        type = semantics_type_spec(p, scope);
+        ast = p;
+    }
+    else
+    {
+        type = ctype_create("", CPTR, p); /* pointer */
+        for (t = p, tt = type;; t = t->chd)
+        {
+            if (t->chd->type == TYPE_SPEC)
+            {
+                tt->rec.ref = semantics_type_spec(t->chd, scope);
+                ast = t;
+                break;
+            }
+            tt->rec.ref = ctype_create("", CPTR, t);
+            tt = tt->rec.ref;
+        }
+    }
+    if (!IS_SCALAR(type->type))
+    {
+        sprintf(err_buff, "conversion to non-scalar type requested");
+        ERROR(ast);
+    }
+    type->ast = ast;
+    return type;
+}
+
 
 ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
@@ -1114,7 +1121,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                         res = exp_check_arith(op1, op2, p);
                         break;
                     case EXP_CAST:
-                        res.type = semantics_type_name(p->chd, scope);
+                        res.type = semantics_cast(p->chd, scope);
                         res.lval = 0;
                         break;
                     case '&':

@@ -9,3 +9,7 @@ TODO
 - Fix:
 
   - local function declaration is not in a local scope
+
+- Not Implemented:
+
+  - Complex type name (to be in agreement with complex decl)
