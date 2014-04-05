@@ -25,6 +25,18 @@ CTable_t ctable_create(Hashfunc_t hfunc) {
     return ct;
 }
 #endif
+void ctable_destory(CTable_t ct) {
+    int i;
+    for (i = 0; i < MAX_TABLE_SIZE; i++)
+    {
+        CTNode *p, *np;
+        for (p = ct->head[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+    }
+}
 
 extern void print_error(char *, char *, int, int, int);
 extern char *load_line(int);
@@ -73,6 +85,8 @@ CScope_t cscope_create() {
     CScope_t p = NEW(CScope);
     p->lvl = -1;
     p->top = NULL;
+    p->func = NULL;
+    p->inside_loop = 0;
 #ifdef CIBIC_DEBUG
     p->tvar = ctable_create(bkdr_hash, ctable_cvar_print);
     p->ttype = ctable_create(bkdr_hash, ctable_ctype_print);
@@ -476,12 +490,17 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
     p = p->chd;
     if (p->type == NOP) return NULL; /* void arguments */
     CVar_t params = semantics_p_decl(p, scope), tail = params;
-    cscope_push_var(scope, params);
+#ifdef CIBIC_DEBUG
+    CTable_t tparams = ctable_create(bkdr_hash, ctable_cvar_print);
+#else
+    CTable_t tparams = ctable_create(bkdr_hash);
+#endif
+    ctable_insert(tparams, params->name, params, 0);
     for (p = p->next; p; p = p->next)
     {
         CVar_t var = semantics_p_decl(p, scope);
         if (scope)  /* params inside a function definition */
-            if (!cscope_push_var(scope, var))
+            if (!ctable_insert(tparams, var->name, var, 0))
             {
                 sprintf(err_buff, "redefinition of parameter '%s'", var->name);
                 ERROR(var->ast);
@@ -489,6 +508,7 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
         tail->next = var;
         tail = var;
     }
+    ctable_destory(tparams);
     return params;
 }
 
@@ -644,7 +664,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
     }
     if (!useful)
     {
-        /* TODO: useless typename warning */
+        /* useless typename warning */
         sprintf(err_buff, "useless declaration");
         WARNING(type->ast);
     }
@@ -1165,13 +1185,94 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
     return res;
 }
 
+CVar_t semantics_stmt(CNode *p, CScope_t scope);
+
+CVar_t semantics_if(CNode *p, CScope_t scope) {
+    ExpType exp = semantics_exp(p->chd, scope);
+    CNode *body1 = p->chd->next,
+          *body2 = body1->next;
+    CVar_t res;
+    if (!IS_SCALAR(exp.type->type))
+    {
+        sprintf(err_buff, "a scalar is required in 'if' condition");
+        ERROR(p->chd);
+    }
+    cscope_enter(scope);
+    res = semantics_stmt(body1, scope);
+    cscope_exit(scope);
+    if (body2->type != NOP)
+    {
+        cscope_enter(scope);
+        res->next = semantics_stmt(p->chd->next->next, scope);
+        cscope_exit(scope);
+    }
+    return res;
+}
+
+CVar_t semantics_for(CNode *p, CScope_t scope) {
+    ExpType exp = semantics_exp(p->chd->next, scope);
+    semantics_exp(p->chd, scope);
+    semantics_exp(p->chd->next->next, scope);
+    CVar_t res;
+    if (!IS_SCALAR(exp.type->type))
+    {
+        sprintf(err_buff, "a scalar is required in 'for' condition");
+        ERROR(p->chd->next);
+    }
+    cscope_enter(scope);
+    scope->inside_loop++;
+    res = semantics_stmt(p->chd->next->next->next, scope);
+    scope->inside_loop--;
+    cscope_exit(scope);
+    return res;
+}
+
+CVar_t semantics_while(CNode *p, CScope_t scope) {
+    ExpType exp = semantics_exp(p->chd, scope);
+    CVar_t res;
+    if (!IS_SCALAR(exp.type->type))
+    {
+        sprintf(err_buff, "a scalar is required in 'while' condition");
+        ERROR(p->chd);
+    }
+    cscope_enter(scope);
+    scope->inside_loop++;
+    res = semantics_stmt(p->chd->next, scope);
+    scope->inside_loop--;
+    cscope_exit(scope);
+    return res;
+}
+
+CVar_t semantics_check_loop(CNode *p, CScope_t scope, const char *stmt_name) {
+    if (!scope->inside_loop)
+    {
+        sprintf(err_buff, "%s statement not within a loop", stmt_name);
+        ERROR(p->chd);
+    }
+    return NULL;
+}
+CVar_t semantics_return(CNode *p, CScope_t scope) {
+    assert(scope->func);
+    CType_t rt = scope->func->rec.func.ret;
+    if (p->chd->type != NOP)
+    {
+        if (rt->type == CVOID)
+        {
+            sprintf(err_buff, "'return' with a value, in function returning void");
+            WARNING(p->chd);
+        }
+        semantics_exp(p->chd, scope);
+        exp_check_aseq_(rt, p->chd->ext.type, p->chd);
+    }
+    return NULL;
+}
+
 CVar_t semantics_comp(CNode *, CScope_t);
 CVar_t semantics_stmt(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, STMT);
     switch (p->rec.subtype)
     {
         case STMT_EXP: 
-            /* TODO: expression handle */
             semantics_exp(p->chd, scope);
             break;
         case STMT_COMP:
@@ -1183,29 +1284,17 @@ CVar_t semantics_stmt(CNode *p, CScope_t scope) {
                 return res;
             }
         case STMT_IF:
-            /* TODO: `if' statement */
-            ;
-            break;
+            return semantics_if(p, scope);
         case STMT_FOR:
-            /* TODO: `for' statement */
-            ;
-            break;
+            return semantics_for(p, scope);
         case STMT_WHILE:
-            /* TODO: `while' statement */
-            ;
-            break;
+            return semantics_while(p, scope);
         case STMT_CONT:
-            /* TODO: `continue' statement */
-            ;
-            break;
+            return semantics_check_loop(p, scope, "continue");
         case STMT_BREAK:
-            /* TODO: `break' statement */
-            ;
-            break;
+            return semantics_check_loop(p, scope, "break");
         case STMT_RET:
-            /* TODO: `return' statement */
-            ;
-            break;
+            return semantics_return(p, scope);
         default: assert(0);
     }
     return NULL;
@@ -1244,20 +1333,34 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 
 CVar_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
-    CNode *chd = p->chd->next;
-    CType_t func = ctype_create(chd->rec.strval, CFUNC, p), funco;
-    CVar_t res = cvar_create(func->name, func, p), old;
+    CVar_t head = semantics_p_declr(p->chd->next, semantics_type_spec(p->chd, scope));
+    CType_t func = ctype_create(head->name, CFUNC, p), funco;
+    CVar_t res = cvar_create(head->name, func, p), old = NULL;
+    CNode *chd = p->chd->next->next;
 
-    chd = chd->next;
-    func->rec.func.ret = semantics_type_spec(p->chd, scope);   /* check return type */
+    func->rec.func.ret = head->type;
+    /* check return type */
+    if (!type_is_complete(head->type))
+    {
+        sprintf(err_buff, "return type is an incomplete type");
+        ERROR(p->chd);
+    }
+
+    scope->func = func;
     cscope_enter(scope);                                       /* enter into function local scope */
     func->rec.func.params = semantics_params(chd, scope);      /* check params */
+    if (cscope_push_var(scope, res))
+        old = res;
+    {
+        CVar_t p;
+        for (p = func->rec.func.params; p; p = p->next)
+            cscope_push_var(scope, p);
+    }
     func->rec.func.local = semantics_comp(chd->next, scope);   /* check comp */
     func->rec.func.body = chd->next;
     cscope_exit(scope);                                        /* exit from local scope */
-    if (cscope_push_var(scope, res))
-        old = res;
-    else
+
+    if (!old)
     {
         old = cscope_lookup_var(scope, res->name);
         funco = old->type;

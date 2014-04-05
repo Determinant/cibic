@@ -80,6 +80,7 @@ CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc);
 #else
 CTable_t ctable_create(Hashfunc_t hfunc);
 #endif
+void ctable_destroy(CTable_t ct);
 void *ctable_lookup(CTable_t ct, const char *key);
 int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
 void ctable_clip(CTable_t ct, const char *key, int max_lvl);
@@ -104,9 +105,11 @@ typedef struct CSNode {
 typedef struct CScope *CScope_t;
 typedef struct CScope {
     int lvl;
+    CType_t func;
+    int inside_loop;
     struct CSNode *top; 
-    struct CTable *tvar;
-    struct CTable *ttype;
+    CTable_t tvar;
+    CTable_t ttype;
 } CScope;
 
 typedef struct ExpType {
