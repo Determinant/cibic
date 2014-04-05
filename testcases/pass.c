@@ -72,7 +72,14 @@ void comma() {
 }
 
 int complex_pointer() {
-    int (*f(int ***e[10]))();
+    int (*g(int ***e[10]))();
+}
+
+int fp(int a, int b, int c) {
+    int (*f)(int a, int b, int c);
+    f = ****fp + 1;
+    (****f)(1, 2, 3);
+    f = &fp + 1;
 }
 
 struct Node n;

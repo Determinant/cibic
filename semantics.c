@@ -581,6 +581,11 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
             CVar_t var = semantics_declr(declr, 
                                         semantics_type_spec(p->chd, scope),
                                         scope, 0);
+            if (var->type->type == CFUNC)
+            {
+                sprintf(err_buff, "field '%s' declared as a function", var->name);
+                ERROR(var->ast);
+            }
             /* incomplete type checking */
             if (!type_is_complete(var->type))
             {
@@ -794,6 +799,8 @@ ExpType exp_check_deref(ExpType op1, CNode *ast) {
         sprintf(err_buff, "invalid type argument of unary '*'");
         ERROR(ast);
     }
+    if (op1.type->rec.ref->type == CFUNC)
+        return op1;
     op1.lval = 1;   /* deref changes exp to lval */
     if (!type_is_complete(op1.type = op1.type->rec.ref))
     {
@@ -805,6 +812,9 @@ ExpType exp_check_deref(ExpType op1, CNode *ast) {
 
 ExpType exp_check_ref(ExpType op1, CNode *ast) {
     ExpType res;
+    CType_t t = op1.type;
+    if (t->type == CARR || (t->type == CPTR && t->rec.ref->type == CFUNC))
+        return op1;
     if (!op1.lval)
     {
         sprintf(err_buff, "lvalue required as unary '&' operand");
@@ -935,7 +945,8 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             op1.lval = 1;
             break;
         case POSTFIX_CALL:
-            if (t1 != CFUNC)
+            if (!((t1 == CFUNC) ||
+                (t1 == CPTR && op1.type->rec.ref->type == CFUNC)))
             {
                 sprintf(err_buff, "called object is not a function");
                 ERROR(p);
@@ -943,7 +954,10 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             {
                 CNode *arg = post->chd->chd;
                 CType_t func = p->chd->ext.type;
-                CVar_t param = func->rec.func.params;
+                CVar_t param;
+                /* pointer to function */
+                if (func->type == CPTR) func = func->rec.ref;
+                param = func->rec.func.params;
                 for (; arg && param;
                         arg = arg->next, param = param->next) 
                 {
@@ -1026,6 +1040,12 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             }
             res.type = p->ext.var->type;
             res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
+            if (res.type->type == CFUNC)
+            {
+                CType_t f = ctype_create("", CPTR, p);
+                f->rec.ref = res.type;
+                res.type = f;
+            }
             break;
         case INT:
             res.type = basic_type_int;
@@ -1325,7 +1345,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
     }
 
     scope->func = func;
-    cscope_enter(scope);                                       /* enter function local scope */
+    cscope_enter(scope);                /* enter function local scope */
     {   /* Note: here is a dirty hack to forcibly push function definition to
            the global scope, while all the types specified in parameters retain in local scope.
            The key point is to make sure semantics_params does not push any var */
