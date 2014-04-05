@@ -481,7 +481,7 @@ CType_t semantics_type_name(CNode *p, CScope_t scope) {
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
     p = p->chd;
-    if (p->type == NOP) return NULL; /* void arguments */
+    if (!p) return NULL; /* no parameters */
     CVar_t params = semantics_p_decl(p, scope), tail = params;
 #ifdef CIBIC_DEBUG
     CTable_t tparams = ctable_create(bkdr_hash, ctable_cvar_print);

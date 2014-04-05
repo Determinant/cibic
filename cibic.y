@@ -49,7 +49,8 @@ function_definition
     }
 
 parameters
-    : plain_declaration
+    : { $$ = NULL; }
+    | plain_declaration
     | parameters ',' plain_declaration { $$ = cnode_list_append($1, $3); }
 
 declarators
@@ -107,11 +108,6 @@ plain_declaration
 direct_declarator
     : identifier
     | '(' declarator ')' { $$ = $2; }
-    | direct_declarator '(' ')' {
-        $$ = cnode_add_loc(cnode_create_declr(
-                            DECLR_FUNC, 2, $1,
-                            cnode_list_wrap(PARAMS, cnode_create_nop())), @$);
-    }
     | direct_declarator '(' parameters ')' {
         $$ = cnode_add_loc(cnode_create_declr(
                             DECLR_FUNC, 2, $1,
@@ -325,16 +321,14 @@ postfix
         $$ = cnode_add_loc(cnode_create_exp(
                             POSTFIX_CALL, 1,
                             cnode_add_loc(cnode_list_wrap(ARGS, $2), @2)), @$); }
-    | '(' ')' {
-        $$ = cnode_add_loc(cnode_create_exp(
-                            POSTFIX_CALL, 1, cnode_list_wrap(ARGS, NULL)), @$); }
     | '.' identifier { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_DOT, 1, $2), @$); }
     | OPT_PTR identifier { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_PTR, 1, $2), @$); }
     | OPT_INC { $$ = cnode_add_loc(cnode_create_exp(OPT_INC, 0), @$); }
     | OPT_DEC { $$ = cnode_add_loc(cnode_create_exp(OPT_DEC, 0), @$); }
 
 arguments
-    : assignment_expression
+    : { $$ = NULL; }
+    | assignment_expression
     | arguments ',' assignment_expression { $$ = cnode_list_append($1, $3); }
 
 primary_expression

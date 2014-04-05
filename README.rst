@@ -10,6 +10,7 @@ Build Requirements
 Features
 ---------
 - Complex pointer support
+- Forward declaration
+- Sophisticated error reporting
 - User-friendly AST printing
-- More sophisticated error reporting
 - Small memory footprint
