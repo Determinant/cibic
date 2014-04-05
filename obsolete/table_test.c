@@ -20,11 +20,11 @@
     } while(0)
 
 CVar_t newvar(const char *name) {
-    return cvar_create(name, NULL);
+    return cvar_create(name, NULL, NULL);
 }
 
 CType_t newtype(const char *name) {
-    return ctype_create(name, 0);
+    return ctype_create(name, 0, NULL);
 }
 
 void manual() {
