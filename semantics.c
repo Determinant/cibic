@@ -9,6 +9,13 @@
 #define ERROR(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 0)
 #define WARNING(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 1)
 
+extern void print_error(char *, char *, int, int, int);
+extern char *load_line(int);
+static char err_buff[MAX_ERROR_BUFF];
+static CType_t basic_type_int; 
+static CType_t basic_type_char;
+static CType_t basic_type_void;
+
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
     CTable_t ct = NEW(CTable);
@@ -37,13 +44,6 @@ void ctable_destory(CTable_t ct) {
         }
     }
 }
-
-extern void print_error(char *, char *, int, int, int);
-extern char *load_line(int);
-static char err_buff[MAX_ERROR_BUFF];
-static CType_t basic_type_int; 
-static CType_t basic_type_char;
-static CType_t basic_type_void;
 
 void *ctable_lookup(CTable_t ct, const char *key) {
     unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
@@ -249,62 +249,66 @@ void cvar_print(CVar_t cv) {
 void ctype_print(CType_t ct) {
     switch (ct->type)
     {
-        case CINT: fprintf(stderr, "[int]"); break;
-        case CCHAR: fprintf(stderr, "[char]"); break;
-        case CVOID: fprintf(stderr, "[void]"); break;
-        case CSTRUCT: case CUNION:
-                    {
-                        CTable_t f = ct->rec.fields;
-                        int i;
-                        CTNode *fn; 
-                        fprintf(stderr, "[%s@%lx:(name:%s|fields:",
-                                ct->type == CSTRUCT ? "struct" : "union",
-                                (size_t)ct,
-                                ct->name);
-                        if (f)
+        case CINT: 
+            fprintf(stderr, "[int]"); break;
+        case CCHAR:
+            fprintf(stderr, "[char]"); break;
+        case CVOID:
+            fprintf(stderr, "[void]"); break;
+        case CSTRUCT:
+        case CUNION:
+            {
+                CTable_t f = ct->rec.fields;
+                int i;
+                CTNode *fn; 
+                fprintf(stderr, "[%s@%lx:(name:%s|fields:",
+                        ct->type == CSTRUCT ? "struct" : "union",
+                        (size_t)ct,
+                        ct->name);
+                if (f)
+                {
+                    int first = 1;
+                    for (i = 0; i < MAX_TABLE_SIZE; i++)
+                        for (fn = f->head[i]; fn; fn = fn->next)
                         {
-                            int first = 1;
-                            for (i = 0; i < MAX_TABLE_SIZE; i++)
-                                for (fn = f->head[i]; fn; fn = fn->next)
-                                {
-                                    fprintf(stderr, "%s", first ? (first = 0, "") : ",");
-                                    cvar_print((CVar_t)fn->val);
-                                }
+                            fprintf(stderr, "%s", first ? (first = 0, "") : ",");
+                            cvar_print((CVar_t)fn->val);
                         }
-                        fprintf(stderr, ")]");
-                    }
-                    break;
+                }
+                fprintf(stderr, ")]");
+            }
+            break;
         case CARR:
-                    {
-                        fprintf(stderr, "[arr:(%d)]->", ct->rec.arr.len);
-                        ctype_print(ct->rec.arr.elem);
-                    }
-                    break;
+            {
+                fprintf(stderr, "[arr:(%d)]->", ct->rec.arr.len);
+                ctype_print(ct->rec.arr.elem);
+            }
+            break;
         case CPTR:
-                    {
-                        fprintf(stderr, "[ptr]->");
-                        ctype_print(ct->rec.ref);
-                    }
-                    break;
+            {
+                fprintf(stderr, "[ptr]->");
+                ctype_print(ct->rec.ref);
+            }
+            break;
         case CFUNC:
-                    {
-                        CVar_t p;
-                        fprintf(stderr, "[func:(name:%s|params:", ct->name);
-                        for (p = ct->rec.func.params; p; p = p->next)
-                        {
-                            cvar_print(p);
-                            if (p->next) fprintf(stderr, ",");
-                        }
-                        fprintf(stderr, "|local:");
-                        for (p = ct->rec.func.local; p; p = p->next)
-                        {
-                            cvar_print(p);
-                            if (p->next) fprintf(stderr, ",");
-                        }
-                        fprintf(stderr, ")]->");
-                        ctype_print(ct->rec.func.ret);
-                    }
-                    break;
+            {
+                CVar_t p;
+                fprintf(stderr, "[func:(name:%s|params:", ct->name);
+                for (p = ct->rec.func.params; p; p = p->next)
+                {
+                    cvar_print(p);
+                    if (p->next) fprintf(stderr, ",");
+                }
+                fprintf(stderr, "|local:");
+                for (p = ct->rec.func.local; p; p = p->next)
+                {
+                    cvar_print(p);
+                    if (p->next) fprintf(stderr, ",");
+                }
+                fprintf(stderr, ")]->");
+                ctype_print(ct->rec.func.ret);
+            }
+            break;
     }
 }
 
@@ -408,25 +412,28 @@ CType_t semantics_type_spec(CNode *p, CScope_t scope) {
     CType_t type;
     switch (p->rec.subtype)
     {
-        case KW_VOID: type = ctype_create("", CVOID, p); break;
-        case KW_CHAR: type = ctype_create("", CCHAR, p); break;
-        case KW_INT: type = ctype_create("", CINT, p); break;
+        case KW_VOID:
+            type = ctype_create("", CVOID, p); break;
+        case KW_CHAR:
+            type = ctype_create("", CCHAR, p); break;
+        case KW_INT:
+            type = ctype_create("", CINT, p); break;
         case KW_STRUCT: case KW_UNION:
-                     {
-                         CNode *id = p->chd,
-                               *fields = p->chd->next;
-                         type = ctype_create(id->type == NOP ? "" : id->rec.strval,
-                                 p->rec.subtype == KW_STRUCT ? CSTRUCT : CUNION,
-                                 p);
-                         if (fields->type == NOP)
-                             type->rec.fields = NULL; /* incomplete type */
-                         else
-                             type->rec.fields = semantics_fields(fields, scope);
+            {
+                CNode *id = p->chd,
+                      *fields = p->chd->next;
+                type = ctype_create(id->type == NOP ? "" : id->rec.strval,
+                        p->rec.subtype == KW_STRUCT ? CSTRUCT : CUNION,
+                        p);
+                if (fields->type == NOP)
+                    type->rec.fields = NULL; /* incomplete type */
+                else
+                    type->rec.fields = semantics_fields(fields, scope);
 
-                         if (id->type != NOP)
-                             type = struct_type_merge(type, scope);
-                     }
-                     break;
+                if (id->type != NOP)
+                    type = struct_type_merge(type, scope);
+            }
+            break;
         default: assert(0);
     }
     return type;
@@ -448,8 +455,8 @@ CVar_t semantics_declr(CNode *, CType_t, CScope_t);
 CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PLAIN_DECL);
     CVar_t var = semantics_declr(p->chd->next,
-                                semantics_type_spec(p->chd, scope),
-                                scope);
+            semantics_type_spec(p->chd, scope),
+            scope);
     if (!type_is_complete(var->type))
     {
         sprintf(err_buff, "parameter '%s' has incomplete type", var->name);
@@ -614,8 +621,8 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
         for (; declr; declr = declr->next)
         {
             CVar_t var = semantics_declr(declr, 
-                                        semantics_type_spec(p->chd, scope),
-                                        scope);
+                    semantics_type_spec(p->chd, scope),
+                    scope);
             /* incomplete type checking */
             if (!type_is_complete(var->type))
             {
@@ -651,7 +658,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         {
             /* TODO: initializer checking */
             CVar_t var = semantics_declr(p->chd, type, scope);
-            if (!type_is_complete(var->type))
+            if (scope->lvl && !type_is_complete(var->type))
             {
                 sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
                 ERROR(var->ast);
@@ -673,11 +680,11 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
 
 #define NOT_IGNORE_VOID(et, ast) \
     if (et->type == CVOID) \
-        do \
-        { \
-            sprintf(err_buff, "void value not ignored as it ought to be"); \
-            ERROR(ast); \
-        } while (0)
+do \
+{ \
+    sprintf(err_buff, "void value not ignored as it ought to be"); \
+    ERROR(ast); \
+} while (0)
 
 #define INCOMP_TYPE(ast) \
     do { \
@@ -729,7 +736,6 @@ void exp_check_aseq_(CType_t lhs, CType_t rhs, CNode *ast) {
         default: assert(0);
     }
 }
-
 
 ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
     exp_check_aseq_(lhs.type, rhs.type, ast);
@@ -852,7 +858,7 @@ ExpType exp_check_ref(ExpType op1, CNode *ast) {
     return res;
 }
 
-ExpType exp_check_sizeof(ExpType op1, CNode *ast) {
+ExpType exp_check_sizeof(ExpType op1) {
     op1.lval = 0;
     op1.type = basic_type_int;
     return op1;
@@ -1103,78 +1109,78 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case ASS_AND:
                     case ASS_XOR:
                     case ASS_OR:
-                              res = exp_check_ass(op1, op2, p);
-                              break;
+                        res = exp_check_ass(op1, op2, p);
+                        break;
                     case OPT_OR:
                     case OPT_AND:
-                              res = exp_check_logical(op1, op2, p);
-                              break;
+                        res = exp_check_logical(op1, op2, p);
+                        break;
                     case OPT_SHL:
                     case OPT_SHR:
                     case '|':
                     case '^':
-                              res = exp_check_bitwise(op1, op2, p);
-                              break;
+                        res = exp_check_bitwise(op1, op2, p);
+                        break;
                     case OPT_EQ:
                     case OPT_NE:
                     case '<':
                     case '>' :
                     case OPT_LE:
                     case OPT_GE:
-                              res = exp_check_equality(op1, op2, p);
-                              break;
+                        res = exp_check_equality(op1, op2, p);
+                        break;
                     case '/': case '%':
-                              res = exp_check_arith(op1, op2, p);
-                              break;
+                        res = exp_check_arith(op1, op2, p);
+                        break;
                     case EXP_CAST:
-                              res.type = semantics_type_name(p->chd, scope);
-                              res.lval = 0;
-                              break;
+                        res.type = semantics_type_name(p->chd, scope);
+                        res.lval = 0;
+                        break;
                     case '&':
-                              if (p->chd->next)
-                                  res = exp_check_bitwise(op1, op2, p);
-                              else
-                                  res = exp_check_ref(op1, p);
-                              break;
+                        if (p->chd->next)
+                            res = exp_check_bitwise(op1, op2, p);
+                        else
+                            res = exp_check_ref(op1, p);
+                        break;
                     case '*': 
-                              if (p->chd->next)
-                                  res = exp_check_arith(op1, op2, p);
-                              else
-                                  res = exp_check_deref(op1, p);
-                              break;
+                        if (p->chd->next)
+                            res = exp_check_arith(op1, op2, p);
+                        else
+                            res = exp_check_deref(op1, p);
+                        break;
                     case '+':
-                              if (p->chd->next)
-                                  res = exp_check_add(op1, op2, p, 0);
-                              else
-                              {
-                                  res = op1;
-                                  res.lval = 0;
-                              }
-                              break;
+                        if (p->chd->next)
+                            res = exp_check_add(op1, op2, p, 0);
+                        else
+                        {
+                            res = op1;
+                            res.lval = 0;
+                        }
+                        break;
                     case '-':
-                              if (p->chd->next)
-                                  res = exp_check_add(op1, op2, p, 1);
-                              else
-                              {
-                                  res = op1;
-                                  res.lval = 0;
-                              }
-                              break;
+                        if (p->chd->next)
+                            res = exp_check_add(op1, op2, p, 1);
+                        else
+                        {
+                            res = op1;
+                            res.lval = 0;
+                        }
+                        break;
                     case '~':
-                              res = exp_check_int(op1, p);
-                              break;
+                        res = exp_check_int(op1, p);
+                        break;
                     case '!':
-                              res = exp_check_scalar(op1, p);
-                              break;
+                        res = exp_check_scalar(op1, p);
+                        break;
                     case OPT_INC: case OPT_DEC:
-                              res = exp_check_inc(op1, p);
-                              break;
+                        res = exp_check_inc(op1, p);
+                        break;
                     case KW_SIZEOF:
-                              res = exp_check_sizeof(op1, p);
-                              break;
+                        res = exp_check_sizeof(op1);
+                        break;
                     case EXP_POSTFIX:
-                              res = exp_check_postfix(p, scope);
-                              break;
+                        res = exp_check_postfix(p, scope);
+                        break;
                     default: assert(0);
                 }
             }
@@ -1348,10 +1354,10 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
     }
 
     scope->func = func;
-    cscope_enter(scope);                                       /* enter into function local scope */
     func->rec.func.params = semantics_params(chd, scope);      /* check params */
     if (cscope_push_var(scope, res))
         old = res;
+    cscope_enter(scope);                                       /* enter into function local scope */
     {
         CVar_t p;
         for (p = func->rec.func.params; p; p = p->next)
