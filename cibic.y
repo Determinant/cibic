@@ -336,7 +336,7 @@ postfix
                             cnode_add_loc(cnode_list_wrap(ARGS, $2), @2)), @$); }
     | '(' ')' {
         $$ = cnode_add_loc(cnode_create_exp(
-                            POSTFIX_CALL, 1, cnode_list_wrap(ARGS, cnode_create_nop())), @$); }
+                            POSTFIX_CALL, 1, cnode_list_wrap(ARGS, NULL)), @$); }
     | '.' identifier { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_DOT, 1, $2), @$); }
     | OPT_PTR identifier { $$ = cnode_add_loc(cnode_create_exp(POSTFIX_PTR, 1, $2), @$); }
     | OPT_INC { $$ = cnode_add_loc(cnode_create_exp(OPT_INC, 0), @$); }
