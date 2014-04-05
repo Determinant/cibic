@@ -1068,7 +1068,10 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 switch (p->rec.subtype)
                 {
                     /* following cases are binary expressions */
-                    case ',': res = op2; break;
+                    case ',': 
+                        res = op2;
+                        res.lval = 0;
+                        break;
                     case '=' : 
                     case ASS_MUL:
                     case ASS_DIV:
