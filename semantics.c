@@ -1179,6 +1179,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 }
             }
             break;
+        case NOP: ; break;
         default: assert(0);
     }
     p->ext.type = res.type;
@@ -1214,7 +1215,7 @@ CVar_t semantics_for(CNode *p, CScope_t scope) {
     semantics_exp(p->chd, scope);
     semantics_exp(p->chd->next->next, scope);
     CVar_t res;
-    if (!IS_SCALAR(exp.type->type))
+    if (p->chd->next->type != NOP && !IS_SCALAR(exp.type->type))
     {
         sprintf(err_buff, "a scalar is required in 'for' condition");
         ERROR(p->chd->next);
@@ -1247,7 +1248,7 @@ CVar_t semantics_check_loop(CNode *p, CScope_t scope, const char *stmt_name) {
     if (!scope->inside_loop)
     {
         sprintf(err_buff, "%s statement not within a loop", stmt_name);
-        ERROR(p->chd);
+        ERROR(p);
     }
     return NULL;
 }
