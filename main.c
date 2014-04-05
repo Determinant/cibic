@@ -46,6 +46,7 @@ void print_ast() {
 void print_sem() {
     yyparse();
     semantics_check(ast_root);
+    cnode_debug_print(ast_root, 1);
 }
 
 void print_help() {

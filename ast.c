@@ -367,13 +367,13 @@ char *cnode_debug_type_repr(CNode *ast) {
         assert(type);
     }
     if (aptr == abuff)
-        sprintf(buffer, "%s(%d:%d)", type,
-                ast->loc.row, ast->loc.col);
+        sprintf(buffer, "%s(%d:%d)->(var:%lx, type:%lx)", type,
+                ast->loc.row, ast->loc.col, (size_t)ast->ext.var, (size_t)ast->ext.type);
     else
     {
         *aptr = '\0';
-        sprintf(buffer, "%s:%s(%d:%d)", type, abuff,
-                ast->loc.row, ast->loc.col);
+        sprintf(buffer, "%s:%s(%d:%d)->(var:%lx, type:%lx)", type, abuff,
+                ast->loc.row, ast->loc.col, (size_t)ast->ext.var, (size_t)ast->ext.type);
     }
     return buffer;
 }

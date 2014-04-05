@@ -45,7 +45,7 @@ typedef struct CNode {
         int subtype;
         char *strval;
     } rec;
-    union {
+    struct {
         CType *type;
         CVar *var;
     } ext;
