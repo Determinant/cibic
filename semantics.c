@@ -579,7 +579,7 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
 
 CVar_t semantics_decl(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, DECL);
-    CNode *init = p->chd->next;
+    CNode *declr = p->chd->next;
     CType_t type = semantics_type_spec(p->chd, scope);
     CVar_t res = NULL;
     int useful = 0;
@@ -589,10 +589,10 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         cscope_push_type(scope, type);
         useful = 1;
     }
-    if (init->chd->type != NOP)
+    if (declr->chd->type != NOP)
     {
         CNode *p;
-        for (p = init->chd; p; p = p->next)
+        for (p = declr->chd; p; p = p->next)
         {
             /* TODO: initializer checking */
             CVar_t var = semantics_declr(p->chd, type, scope, 0);
