@@ -45,8 +45,8 @@ typedef struct CNode {
         char *strval;
     } rec;
     struct {
-        CType *type;
-        CVar *var;
+        CType_t type;
+        CVar_t var;
     } ext;
     struct CNode *chd, *next;
     /* For error reporting */

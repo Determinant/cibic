@@ -8,6 +8,7 @@ TODO
 
 - Fix:
 
+  - check global definition when semantic analysis finishes
   - local function declaration is not in a local scope
 
 - Not Implemented:

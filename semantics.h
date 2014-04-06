@@ -3,23 +3,24 @@
 #include "const.h"
 
 typedef struct CNode CNode;
-struct CTable;
 typedef struct CTable *CTable_t;
-struct CType;
+typedef struct CType CType;
+typedef CType *CType_t;
+typedef struct CVar CVar;
+typedef CVar *CVar_t;
 
-typedef struct CVar {
+struct CVar {
     const char *name;
-    struct CVar *next;    /* next in the linked list */
-    struct CType *type;
+    CVar_t next;    /* next in the linked list */
+    CType_t type;
     int offset;
     CNode *ast;
-} CVar;
+};
 
-typedef CVar *CVar_t;
-CVar_t cvar_create(const char *name, struct CType *type, CNode *ast);
+CVar_t cvar_create(const char *name, CType_t type, CNode *ast);
 void cvar_print(CVar_t cv);
 
-typedef struct CType {
+struct CType {
     enum {
         CINT,
         CCHAR,
@@ -31,26 +32,25 @@ typedef struct CType {
         CFUNC
     } type;
     const char *name;
-    struct CType *next;
+    CType_t next;
     union {
         CTable_t fields; /* for a struct or union */
-        struct CType *ref;    /* for a pointer */
+        CType_t ref;    /* for a pointer */
         struct {
-            struct CType *elem;
+            CType_t elem;
             int len;
         } arr;                /* for an array */
         struct {
-            CVar *params;
-            CVar *local;
-            struct CType *ret;
+            CVar_t params;
+            CVar_t local;
+            CType_t ret;
             CNode *body;
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */
     CNode *ast;
-} CType;
+};
 
-typedef CType *CType_t;
 CType_t ctype_create(const char *name, int type, CNode *ast);
 void ctype_debug_print(CType_t ct);
 
@@ -59,15 +59,16 @@ typedef unsigned int (*Hashfunc_t) (const char *);
 typedef const char *(*Printfunc_t) (void *);
 #endif
 
-typedef struct CTNode {
+typedef struct CTNode CTNode;
+struct CTNode {
     const char *key;
     void *val;
-    struct CTNode *next;
+    CTNode *next;
     int lvl;
-} CTNode;
+};
 
 typedef struct CTable {
-    struct CTNode *head[MAX_TABLE_SIZE];
+    CTNode *head[MAX_TABLE_SIZE];
     Hashfunc_t hfunc;
 #ifdef CIBIC_DEBUG
     Printfunc_t pfunc;
@@ -86,42 +87,46 @@ int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
 void ctable_clip(CTable_t ct, const char *key, int max_lvl);
 void ctable_debug_print(CTable_t ct);
 
-typedef struct CSVar {
-    struct CVar *var;
-    struct CSVar *next;
-} CSVar;
+typedef struct CSVar CSVar;
+struct CSVar {
+    CVar_t var;
+    CSVar *next;
+};
 
-typedef struct CSType {
-    struct CType *type;
-    struct CSType *next;
-} CSType;
+typedef struct CSType CSType;
+struct CSType {
+    CType_t type;
+    CSType *next;
+};
 
-typedef struct CSNode {
-    struct CSVar *vhead;
-    struct CSType *thead;
-    struct CSNode *next;
-} CSNode;
+typedef struct CSNode CSNode;
+struct CSNode {
+    CSVar *vhead;
+    CSType *thead;
+    CSNode *next;
+};
 
-typedef struct CScope *CScope_t;
-typedef struct CScope {
+typedef struct CScope CScope;
+typedef CScope *CScope_t;
+struct CScope {
     int lvl;
     CType_t func;
     int inside_loop;
-    struct CSNode *top; 
+    CSNode *top; 
     CTable_t tvar;
     CTable_t ttype;
-} CScope;
+};
 
 typedef struct ExpType {
-    CType *type;
+    CType_t type;
     int lval;
 } ExpType;
 
 CScope_t cscope_create();
-CVar *cscope_lookup_var(CScope_t cs, const char *name);
-CType *cscope_lookup_type(CScope_t cs, const char *name);
-int cscope_push_var(CScope_t cs, CVar *var);
-int cscope_push_type(CScope_t cs, CType *type);
+CVar_t cscope_lookup_var(CScope_t cs, const char *name);
+CType_t cscope_lookup_type(CScope_t cs, const char *name);
+int cscope_push_var(CScope_t cs, CVar_t var);
+int cscope_push_type(CScope_t cs, CType_t type);
 void cscope_enter(CScope_t cs);
 void cscope_exit(CScope_t cs);
 void cscope_debug_print(CScope_t cs);

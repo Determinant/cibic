@@ -14,9 +14,9 @@ cibic.tab.o: cibic.tab.c
 	gcc -c cibic.tab.c
 main.o: main.c
 	gcc -c main.c -g -Wall -Wextra
-ast.o:	ast.c
+ast.o:	ast.c ast.h
 	gcc -c ast.c -g -Wall -Wextra -DCIBIC_DEBUG
-semantics.o: semantics.c
+semantics.o: semantics.c semantics.h
 	gcc -c semantics.c -g -Wall -Wextra -DCIBIC_DEBUG
 lex.yy.c: cibic.l
 	flex cibic.l
