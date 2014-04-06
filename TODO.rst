@@ -12,4 +12,5 @@ TODO
 
 - Not Implemented:
 
-  - Complex type name (to be in agreement with complex decl)
+  - complex type name (to be in agreement with complex decl) (almost done)
+  - initializer checking

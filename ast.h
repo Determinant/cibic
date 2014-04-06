@@ -28,7 +28,6 @@ typedef struct CNode {
 
         /* Expressions  */
         EXP,
-        TYPE_NAME,
         ID, /* identifier */
         INT, /* INT_CONST */
         CHAR,

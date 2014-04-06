@@ -19,7 +19,7 @@
 %type<intval> INT_CONST
 %type<strval> IDENTIFIER STR_CONST CHAR_CONST
 %type<intval> additive_operator assignment_operator equality_operator multiplicative_operator relational_operator shift_operator struct_or_union unary_operator
-%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration direct_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression
+%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration direct_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression abstract_declarator direct_abstract_declarator direct_abstract_declarator_opt abstract_declarator_opt
 %start program
 %%
 program
@@ -290,8 +290,37 @@ cast_expression
         $$ = cnode_add_loc(cnode_create_exp(EXP_CAST, 2, $2, $4), @$); }
 
 type_name
-    : type_specifier
-    | type_name '*' { $$ = cnode_add_loc(cnode_create_exp('*', 1, $1), @$); }
+    : type_specifier abstract_declarator_opt {
+        $$ = cnode_add_loc(cnode_create_declr(0, 2, $1, $2), @$); }
+
+abstract_declarator_opt
+    : { $$ = cnode_create_nop(); }
+    | abstract_declarator
+
+abstract_declarator
+    : '*' { $$ = cnode_add_loc(cnode_create_declr('*', 1, cnode_create_nop()), @$); }
+    | '*' abstract_declarator { $$ = cnode_add_loc(cnode_create_declr('*', 1, $2), @$); }
+    | direct_abstract_declarator
+
+direct_abstract_declarator_opt
+    : { $$ = cnode_create_nop(); }
+    | direct_abstract_declarator
+
+direct_abstract_declarator
+    : '(' abstract_declarator ')' { $$ = $2; }
+    | direct_abstract_declarator '(' parameters ')' {
+        $$ = cnode_add_loc(cnode_create_declr(
+                            DECLR_FUNC, 2, $1,
+                            cnode_add_loc(cnode_list_wrap(PARAMS, $3), @3)), @$);
+    }
+    | '(' parameters ')' {
+        $$ = cnode_add_loc(cnode_create_declr(
+                            DECLR_FUNC, 2, cnode_create_nop(),
+                            cnode_add_loc(cnode_list_wrap(PARAMS, $2), @2)), @$);
+    }
+    | direct_abstract_declarator_opt '[' constant_expression ']' {
+        $$ = cnode_add_loc(cnode_create_declr(DECLR_ARR, 2, $1, $3), @$);
+    }
 
 unary_expression
     : postfix_expression

@@ -231,7 +231,6 @@ char *cnode_debug_type_repr(CNode *ast) {
         case DECL:      type = "decl"; break;
         case INIT_DECLR:  type = "init_declr"; break;
         case PLAIN_DECL:  type = "p_decl"; break;
-        case TYPE_NAME:  type = "type_name"; break;
         case COMP_STMTS: type = "blk_stmts"; break;
         case COMP_DECLS: type = "blk_decls"; break;
         case DECLRS: type = "declrs"; break;
@@ -331,6 +330,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             case DECLR_FUNC: type = "func"; break;
             case DECLR_ARR: type = "arr"; break;
             case '*': type = "*"; break;
+            case 0: type = "typename"; break;
             default: assert(0);
         }
     }
