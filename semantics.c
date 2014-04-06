@@ -596,7 +596,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         {
             /* TODO: initializer checking */
             CVar_t var = semantics_declr(p->chd, type, scope, 0);
-            if (scope->lvl && !type_is_complete(var->type))
+            if (!type_is_complete(var->type))
             {
                 sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
                 ERROR(var->ast);

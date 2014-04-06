@@ -7,7 +7,7 @@ struct CTable;
 typedef struct CTable *CTable_t;
 struct CType;
 
-typedef struct CVar{
+typedef struct CVar {
     const char *name;
     struct CVar *next;    /* next in the linked list */
     struct CType *type;
