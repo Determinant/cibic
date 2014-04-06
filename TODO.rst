@@ -15,3 +15,4 @@ TODO
 
   - complex type name (to be in agreement with complex decl) (almost done)
   - initializer checking
+  - typedef support (via adding mid-rule actions to bision to inform flex)
