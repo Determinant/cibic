@@ -24,7 +24,7 @@ cibic.tab.c: cibic.y
 	bison -d cibic.y
 
 clean:
-	rm -f cibic lex.yy.c cibic.tab.c *.o
+	rm -f cibic lex.yy.c cibic.tab.c cibic.tab.h *.o
 
 sem: semantics.o test.o
 	gcc -o sem semantics.o test.o
