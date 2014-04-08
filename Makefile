@@ -8,7 +8,7 @@ db:
 
 cibic: lex.yy.o cibic.tab.o ast.o main.o semantics.o
 	gcc -o cibic lex.yy.o cibic.tab.o ast.o main.o semantics.o
-lex.yy.o: lex.yy.c
+lex.yy.o: lex.yy.c cibic.tab.c
 	gcc -c lex.yy.c
 cibic.tab.o: cibic.tab.c
 	gcc -c cibic.tab.c
