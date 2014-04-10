@@ -82,6 +82,10 @@ int fp(int a, int b, int c) {
     f = &fp + 1;
 }
 
+int f(int f()) {
+    f(complex_pointer);
+}
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */

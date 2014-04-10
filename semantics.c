@@ -428,11 +428,25 @@ CType_t semantics_type_spec(CNode *p, CScope_t scope) {
 int type_is_complete(CType_t type) {
     switch(type->type)
     {
-        case CINT: case CCHAR: case CPTR: case CARR:
+        case CINT: case CCHAR:
+            /* basic types are always complete */
+        case CPTR:
+            /* pointer may point to an incomplete type */
+        case CARR:
+            /* syntax of incomplete arrays is not allowed in `cibic.y` */
             return 1;
         case CSTRUCT: case CUNION:
+            /* fields are guaranteed to be complete if exists, due to
+             * `semantics_fields` */
             return type->rec.fields != NULL;
-        default: ; /* TODO: CFUNC CVOID */
+        case CVOID:
+            /* void type is never complete */
+            return 0;
+        case CFUNC:
+            /* function body is not required here, it is checked in the last
+             * phase */
+            return 1;
+        default: assert(0);
     }
     return 1;
 }
@@ -451,6 +465,16 @@ CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     return var;
 }
 
+/* pointer to function conversion (std 6.3.2/4) */
+#define FUNC_POINTER_CONV(t) \
+    do { \
+        if ((t)->type == CFUNC) \
+        { \
+            CType_t f = ctype_create("", CPTR, p); \
+            f->rec.ref = t; \
+            t = f; \
+        } \
+    } while (0)
 
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
@@ -462,10 +486,12 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
 #else
     CTable_t tparams = ctable_create(bkdr_hash);
 #endif
+    FUNC_POINTER_CONV(params->type);
     ctable_insert(tparams, params->name, params, 0);
     for (p = p->next; p; p = p->next)
     {
         CVar_t var = semantics_p_decl(p, scope);
+        FUNC_POINTER_CONV(var->type);
         if (scope)  /* params inside a function definition */
             if (!ctable_insert(tparams, var->name, var, 0))
             {
@@ -505,7 +531,7 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk
                 cscope_exit(scope);
                 /* incomplete type */
                 func->rec.func.local = NULL;
-                func->rec.func.ret = type_spec;
+                func->rec.func.ret = type_spec;     /* might be an incomplete type */
                 func->rec.func.body = NULL;         /* not a definition */
                 type = semantics_declr(p->chd, func, scope, 1);
                 if (type_spec->type == CARR)
@@ -525,6 +551,11 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk
         case DECLR_ARR:
             {
                 CType_t arr = ctype_create("", CARR, p);    /* array declr */
+                if (!type_is_complete(type_spec))
+                {
+                    sprintf(err_buff, "array type has incomplete element type");
+                    ERROR(p);
+                }
                 arr->rec.arr.elem = type_spec;
                 arr->rec.arr.len = p->chd->next->rec.intval;
                 type = semantics_declr(p->chd, arr, scope, 0);
@@ -556,15 +587,15 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
             CVar_t var = semantics_declr(declr, 
                                         semantics_type_spec(p->chd, scope),
                                         scope, 0);
-            if (var->type->type == CFUNC)
-            {
-                sprintf(err_buff, "field '%s' declared as a function", var->name);
-                ERROR(var->ast);
-            }
-            /* incomplete type checking */
+            /* types of fields are supposed to be complete */
             if (!type_is_complete(var->type))
             {
                 sprintf(err_buff, "field '%s' has incomplete type", var->name);
+                ERROR(var->ast);
+            }
+            if (var->type->type == CFUNC)
+            {
+                sprintf(err_buff, "field '%s' declared as a function", var->name);
                 ERROR(var->ast);
             }
             if (!ctable_insert(ct, var->name, var, 0))
@@ -946,8 +977,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             op1.lval = 1;
             break;
         case POSTFIX_CALL:
-            if (!((t1 == CFUNC) ||
-                (t1 == CPTR && op1.type->rec.ref->type == CFUNC)))
+            if (!(t1 == CPTR && op1.type->rec.ref->type == CFUNC))
             {
                 sprintf(err_buff, "called object is not a function");
                 ERROR(p);
@@ -1041,12 +1071,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             }
             res.type = p->ext.var->type;
             res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
-            if (res.type->type == CFUNC)
-            {
-                CType_t f = ctype_create("", CPTR, p);
-                f->rec.ref = res.type;
-                res.type = f;
-            }
+            FUNC_POINTER_CONV(res.type);
             break;
         case INT:
             res.type = basic_type_int;
@@ -1338,8 +1363,9 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
                                 scope, 0);
     CType_t func = head->type, funco;
     CVar_t res = cvar_create(head->name, func, p), old = NULL;
+    CType_t rt = func->rec.func.ret;
 
-    if (!type_is_complete(func->rec.func.ret))
+    if (rt->type != CVOID && !type_is_complete(rt))
     {
         sprintf(err_buff, "return type is an incomplete type");
         ERROR(func->rec.func.ret->ast);
