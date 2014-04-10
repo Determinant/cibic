@@ -338,7 +338,6 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
         ERROR(new->ast);
     }
     /* otherwise incomplete, thus complete the type */
-    old->next = new->next;
     old->rec.fields = new->rec.fields;
     old->ast = new->ast;
     free(new);
@@ -497,6 +496,7 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
         tail = var;
     }
     ctable_destory(tparams);
+    tail->next = NULL;
     return params;
 }
 

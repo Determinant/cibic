@@ -32,7 +32,6 @@ struct CType {
         CFUNC
     } type;
     const char *name;
-    CType_t next;
     union {
         CTable_t fields; /* for a struct or union */
         CType_t ref;    /* for a pointer */
