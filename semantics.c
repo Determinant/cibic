@@ -457,11 +457,6 @@ CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     CVar_t var = semantics_declr(p->chd->next,
                                 semantics_type_spec(p->chd, scope),
                                 scope, 0);
-    if (!type_is_complete(var->type))
-    {
-        sprintf(err_buff, "parameter '%s' has incomplete type", var->name);
-        ERROR(var->ast);
-    }
     return var;
 }
 
@@ -1377,7 +1372,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
            the global scope, while all the types specified in parameters retain in local scope.
            The key point is to make sure semantics_params does not push any var */
         CSNode *ntop = scope->top;
-        CVar_t p;
+        CVar_t var;
         scope->top = ntop->next;
         scope->lvl--;
         if (cscope_push_var(scope, res))
@@ -1385,8 +1380,15 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         scope->top = ntop;
         scope->lvl++;
 
-        for (p = func->rec.func.params; p; p = p->next)
-            cscope_push_var(scope, p);
+        for (var = func->rec.func.params; var; var = var->next)
+        {
+            cscope_push_var(scope, var);
+            if (!type_is_complete(var->type))
+            {
+                sprintf(err_buff, "parameter '%s' has incomplete type", var->name);
+                ERROR(var->ast);
+            }
+        }
     }
     func->rec.func.local = semantics_comp(p->chd->next->next, scope);   /* check comp */
     func->rec.func.body = p->chd->next->next;

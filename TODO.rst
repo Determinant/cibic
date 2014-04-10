@@ -9,7 +9,7 @@ TODO
 - Fix:
 
   - check global definition (if type is complete) when semantic analysis finishes
-  - local function declaration is not in a local scope (external linkage issue)
+  - local function declaration is not in a local scope (external linkage issue) (will not be fixed)
   - incomplete type issues
     - function **definition** requires complete return type (function declaration does not) (done)
     - array requires **complete** elem type (done)

@@ -86,6 +86,8 @@ int f(int f()) {
     f(complex_pointer);
 }
 
+int incomp(struct I a);
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */
