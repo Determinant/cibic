@@ -712,8 +712,9 @@ ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
 
 ExpType semantics_exp(CNode *, CScope_t);
 
-ExpType semantics_typename(CNode *p, CScope_t scope) {
-    ExpType op = semantics_exp(p->chd->next, scope);
+ExpType semantics_cast(CNode *p, CScope_t scope) {
+    CNode *chd = p->chd->next;
+    ExpType op = semantics_exp(chd, scope);
     CVar_t var = semantics_declr(p->chd->chd->next,
                                 semantics_type_spec(p->chd->chd, scope),
                                 scope, 0);
@@ -741,52 +742,85 @@ ExpType semantics_typename(CNode *p, CScope_t scope) {
     }
     type->ast = p;
     op.type = type;
-    op.is_var |= !IS_INT(type->type);
     op.lval = 0;
+    if ((p->ext.is_const &= !IS_INT(type->type)))
+    {
+        p->ext.const_val = chd->ext.const_val;
+    }
     return op;
 }
 
 
-ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *ast) {
+ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *p, char kind) {
+    CNode *lch = p->chd, 
+          *rch = lch->next;
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
-    NOT_IGNORE_VOID(op1.type, ast);
-    NOT_IGNORE_VOID(op2.type, ast);
+    NOT_IGNORE_VOID(op1.type, p);
+    NOT_IGNORE_VOID(op2.type, p);
     res.lval = 0;
     res.type = basic_type_int;
-    res.is_var = op1.is_var || op2.is_var;
+    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    {
+        int l = lch->ext.const_val,
+            r = rch->ext.const_val,
+            *a = &(p->ext.const_val);
+        switch (kind)
+        {
+            case '*': *a = l * r; break;
+            case '/': *a = l / r; break;
+            case '%': *a = l % r; break;
+        }
+    }
     if (!(IS_ARITH(t1) && IS_ARITH(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     return res;
 }
 
-ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *ast) {
+ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *p, char kind) {
+    CNode *lch = p->chd, 
+          *rch = lch->next;
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
-    NOT_IGNORE_VOID(op1.type, ast);
-    NOT_IGNORE_VOID(op2.type, ast);
+    NOT_IGNORE_VOID(op1.type, p);
+    NOT_IGNORE_VOID(op2.type, p);
     res.lval = 0;
     res.type = basic_type_int;
-    res.is_var = op1.is_var || op2.is_var;
+    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    {
+        int l = lch->ext.const_val,
+            r = rch->ext.const_val,
+            *a = &(p->ext.const_val);
+        switch (kind)
+        {
+            case 'l': *a = l << r; break;
+            case 'r': *a = l >> r; break;
+            case '&': *a = l & r; break;
+            case '|': *a = l | r; break;
+            case '^': *a = l ^ r; break;
+        }
+    }
     if (!(IS_INT(t1) && IS_INT(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     return res;
 }
 
-ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
+ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
+    CNode *lch = p->chd, 
+          *rch = lch->next;
     int t1 = op1.type->type,
         t2 = op2.type->type;
-    NOT_IGNORE_VOID(op1.type, ast);
-    NOT_IGNORE_VOID(op2.type, ast);
-    if (!sub && t2 == CPTR) 
+    NOT_IGNORE_VOID(op1.type, p);
+    NOT_IGNORE_VOID(op2.type, p);
+    if (kind == '+' && t2 == CPTR) 
     {
         /* place the pointer type in the first place */
         int t = t1;
@@ -798,18 +832,18 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
         op1 = op2;
         op2 = te;
 
-        CNode *n1 = ast->chd;
+        CNode *n1 = p->chd;
         CNode *n2 = n1->next;
         n2->next = n1;
         n1->next = NULL;
-        ast->chd = n2;
+        p->chd = n2;
     }
-    if (sub)
+    if (kind == '-')
     {
         if (t2 == CPTR && t1 != CPTR)
         {
             sprintf(err_buff, "invalid operands to binary operator");
-            ERROR(ast);
+            ERROR(p);
         }
     }
     else
@@ -818,41 +852,54 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
                     (t2 == CINT || t2 == CCHAR)))
         {
             sprintf(err_buff, "invalid operands to binary operator");
-            ERROR(ast);
+            ERROR(p);
         }
     }
-    /* TODO: constant pointer folding */
-    if (t1 != CPTR && t2 != CPTR)
-        op1.is_var |= op2.is_var;
+    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    {
+        int l = lch->ext.const_val,
+            r = rch->ext.const_val,
+            *a = &(p->ext.const_val);
+        if (t1 != CPTR && t2 != CPTR)
+            switch (kind)
+            {
+                case '+': *a = l + r; break;
+                case '-': *a = l - r; break;
+            }
+        else
+        {
+            /* TODO: constant pointer folding */
+        }
+    }
     op1.lval = 0;
     return op1; /* int or pointer */
 }
 
-ExpType exp_check_int(ExpType op1, CNode *ast) {
+ExpType exp_check_int(ExpType op1, CNode *p) {
     if (!IS_INT(op1.type->type))
     {
         sprintf(err_buff, "wrong type argument to unary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     op1.lval = 0;
     return op1;
 }
 
-ExpType exp_check_scalar(ExpType op1, CNode *ast) {
+ExpType exp_check_scalar(ExpType op1, CNode *p) {
     if (!IS_SCALAR(op1.type->type))
     {
         sprintf(err_buff, "wrong type argument to unary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     op1.lval = 0;
     return op1;
 }
 
-ExpType exp_check_deref(ExpType op1, CNode *ast) {
+ExpType exp_check_deref(ExpType op1, CNode *p) {
     if (op1.type->type != CPTR)
     {
         sprintf(err_buff, "invalid type argument of unary '*'");
-        ERROR(ast);
+        ERROR(p);
     }
     if (op1.type->rec.ref->type == CFUNC)
         return op1;
@@ -860,12 +907,12 @@ ExpType exp_check_deref(ExpType op1, CNode *ast) {
     if (!type_is_complete(op1.type = op1.type->rec.ref))
     {
         sprintf(err_buff, "dereferencing pointer to incomplete type");
-        ERROR(ast);
+        ERROR(p);
     }
     return op1;
 }
 
-ExpType exp_check_ref(ExpType op1, CNode *ast) {
+ExpType exp_check_ref(ExpType op1, CNode *p) {
     ExpType res;
     CType_t t = op1.type;
     if (t->type == CARR || (t->type == CPTR && t->rec.ref->type == CFUNC))
@@ -873,13 +920,13 @@ ExpType exp_check_ref(ExpType op1, CNode *ast) {
     if (!op1.lval)
     {
         sprintf(err_buff, "lvalue required as unary '&' operand");
-        ERROR(ast);
+        ERROR(p);
     }
     /* TODO: constant pointer folding */
-    res.is_var = 1;
-    /* should be 0 */
+    p->ext.is_const = 0;
+    /* should be constant */
     res.lval = 0;
-    res.type = ctype_create("", CPTR, ast);
+    res.type = ctype_create("", CPTR, p);
     res.type->rec.ref = op1.type;
     return res;
 }
@@ -890,34 +937,48 @@ ExpType exp_check_sizeof(ExpType op1) {
     return op1;
 }
 
-ExpType exp_check_inc(ExpType op1, CNode *ast) {
+ExpType exp_check_inc(ExpType op1, CNode *p) {
     if (!IS_SCALAR(op1.type->type))
     {
         sprintf(err_buff, "wrong type argument to increment/decrement");
-        ERROR(ast);
+        ERROR(p);
     }
     if (!op1.lval)
     {
         sprintf(err_buff, "lvalue required as increment/decrement operand");
-        ERROR(ast);
+        ERROR(p);
     }
     return op1;
 }
 
 
-ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
+ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *p, char kind) {
+    CNode *lch = p->chd, 
+          *rch = lch->next;
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
-    NOT_IGNORE_VOID(op1.type, ast);
-    NOT_IGNORE_VOID(op2.type, ast);
+    NOT_IGNORE_VOID(op1.type, p);
+    NOT_IGNORE_VOID(op2.type, p);
     res.lval = 0;
     res.type = basic_type_int;
-    res.is_var = op1.is_var || op2.is_var;
+
+    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    {
+        int l = lch->ext.const_val,
+            r = rch->ext.const_val,
+            *a = &(p->ext.const_val);
+        switch (kind)
+        {
+            case '&': *a = l && r; break;
+            case '|': *a = l || r; break;
+        }
+    }
+
     if (!(IS_SCALAR(t1) && IS_SCALAR(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     return res;
 }
@@ -933,50 +994,66 @@ ExpType exp_check_ass(ExpType lhs, ExpType rhs, CNode *p) {
     switch (p->rec.subtype)
     {
         case '=' : return exp_check_aseq(lhs, rhs, p);
-        case ASS_MUL: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p), p);
-        case ASS_DIV: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p), p); 
-        case ASS_MOD: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p), p); 
+        case ASS_MUL: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p, '*'), p);
+        case ASS_DIV: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p, '/'), p); 
+        case ASS_MOD: return exp_check_aseq(lhs, exp_check_arith(lhs, rhs, p, '%'), p); 
 
-        case ASS_ADD: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, 0), p);
-        case ASS_SUB: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, 1), p);
+        case ASS_ADD: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, '+'), p);
+        case ASS_SUB: return exp_check_aseq(lhs, exp_check_add(lhs, rhs, p, '-'), p);
 
-        case ASS_SHL: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p), p);
-        case ASS_SHR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p), p);
-        case ASS_AND: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p), p);
-        case ASS_XOR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p), p);
-        case ASS_OR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p), p);
+        case ASS_SHL: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p, 'l'), p);
+        case ASS_SHR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p, 'r'), p);
+        case ASS_AND: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p, '&'), p);
+        case ASS_XOR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p, '^'), p);
+        case ASS_OR: return exp_check_aseq(lhs, exp_check_bitwise(lhs, rhs, p, '|'), p);
         default: assert(0);
     }
 }
 
-ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *ast) {
+ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *p, int kind) {
+    CNode *lch = p->chd, 
+          *rch = lch->next;
     int t1 = op1.type->type,
         t2 = op2.type->type;
     ExpType res;
-    NOT_IGNORE_VOID(op1.type, ast);
-    NOT_IGNORE_VOID(op2.type, ast);
+    NOT_IGNORE_VOID(op1.type, p);
+    NOT_IGNORE_VOID(op2.type, p);
     res.lval = 0;
     res.type = basic_type_int;
-    res.is_var = op1.is_var || op2.is_var;
+    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    {
+        int l = lch->ext.const_val,
+            r = rch->ext.const_val,
+            *a = &(p->ext.const_val);
+        switch (kind)
+        {
+            case OPT_EQ: *a = l == r; break;
+            case OPT_NE: *a = l != r; break;
+            case '>': *a = l > r; break;
+            case '<': *a = l < r; break;
+            case OPT_LE: *a = l <= r; break;
+            case OPT_GE: *a = l >= r; break;
+        }
+    }
     if (IS_ARITH(t1) && IS_ARITH(t2))
         return res;
     if (!(IS_SCALAR(t1) && IS_SCALAR(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
-        ERROR(ast);
+        ERROR(p);
     }
     if (t1 == CPTR && t2 == CPTR)
     {
         if (!is_same_type(op1.type->rec.ref, op2.type->rec.ref))
         {
             sprintf(err_buff, "comparison of distinct pointer types lacks a cast");
-            WARNING(ast);
+            WARNING(p);
         }
     }
     else if (t1 == CPTR || t2 == CPTR)
     {
         sprintf(err_buff, "comparison between pointer and integer");
-        WARNING(ast);
+        WARNING(p);
     }
     return res;
 }
@@ -1098,26 +1175,29 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             }
             res.type = p->ext.var->type;
             res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
-            res.is_var = 1;
+            p->ext.is_const = 0;
             FUNC_POINTER_CONV(res.type);
             break;
         case INT:
             res.type = basic_type_int;
-            res.is_var = 0;
             res.lval = 0;
+            p->ext.is_const = 1;
+            p->ext.const_val = p->rec.intval;
             break;
         case CHAR:
             res.type = basic_type_char;
-            res.is_var = 0;
             res.lval = 0;
+            p->ext.is_const = 1;
+            p->ext.const_val = p->rec.intval;
             break;
         case STR:
             {
                 CType_t type = ctype_create("", CPTR, NULL);
                 type->rec.ref = basic_type_char;
                 res.type = type;
-                res.is_var = 0;
                 res.lval = 0;
+                p->ext.is_const = 1;
+                p->ext.const_val = (long int)p->rec.strval;
             }
             break;
         case EXP:
@@ -1151,14 +1231,16 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                         res = exp_check_ass(op1, op2, p);
                         break;
                     case OPT_OR:
+                        res = exp_check_logical(op1, op2, p, '|');
+                        break;
                     case OPT_AND:
-                        res = exp_check_logical(op1, op2, p);
+                        res = exp_check_logical(op1, op2, p, '&');
                         break;
                     case OPT_SHL:
                     case OPT_SHR:
                     case '|':
                     case '^':
-                        res = exp_check_bitwise(op1, op2, p);
+                        res = exp_check_bitwise(op1, op2, p, p->rec.subtype);
                         break;
                     case OPT_EQ:
                     case OPT_NE:
@@ -1166,29 +1248,30 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     case '>' :
                     case OPT_LE:
                     case OPT_GE:
-                        res = exp_check_equality(op1, op2, p);
+                        res = exp_check_equality(op1, op2, p, p->rec.subtype);
                         break;
-                    case '/': case '%':
-                        res = exp_check_arith(op1, op2, p);
+                    case '/': 
+                    case '%':
+                        res = exp_check_arith(op1, op2, p, p->rec.subtype);
                         break;
                     case EXP_CAST:
-                        res = semantics_typename(p, scope);
+                        res = semantics_cast(p, scope);
                         break;
                     case '&':
                         if (p->chd->next)
-                            res = exp_check_bitwise(op1, op2, p);
+                            res = exp_check_bitwise(op1, op2, p, '&');
                         else
                             res = exp_check_ref(op1, p);
                         break;
                     case '*': 
                         if (p->chd->next)
-                            res = exp_check_arith(op1, op2, p);
+                            res = exp_check_arith(op1, op2, p, '*');
                         else
                             res = exp_check_deref(op1, p);
                         break;
                     case '+':
                         if (p->chd->next)
-                            res = exp_check_add(op1, op2, p, 0);
+                            res = exp_check_add(op1, op2, p, '+');
                         else
                         {
                             res = op1;
@@ -1197,7 +1280,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                         break;
                     case '-':
                         if (p->chd->next)
-                            res = exp_check_add(op1, op2, p, 1);
+                            res = exp_check_add(op1, op2, p, '-');
                         else
                         {
                             res = op1;
@@ -1466,7 +1549,7 @@ void semantics_check_(CNode *p, CScope_t scope) {
     }
 }
 
-void semantics_check(CNode *ast) {
+void semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
     basic_type_char = ctype_create("char", CCHAR, NULL);
@@ -1476,14 +1559,14 @@ void semantics_check(CNode *ast) {
     cscope_push_type(scope, basic_type_char);
     cscope_push_type(scope, basic_type_void);
     /* check all definitions and declarations */
-    for (ast = ast->chd; ast; ast = ast->next)
+    for (p = p->chd; p; p = p->next)
     {
-        switch (ast->type)
+        switch (p->type)
         {
             case FUNC_DEF: 
-                semantics_func(ast, scope); break;
+                semantics_func(p, scope); break;
             case DECL: 
-                semantics_decl(ast, scope); break;
+                semantics_decl(p, scope); break;
             default: assert(0);
         }
     }
@@ -1504,4 +1587,5 @@ void semantics_check(CNode *ast) {
                 fprintf(stderr, "\n");
             }
     }
+    cnode_debug_print(ast_root, 1);
 }

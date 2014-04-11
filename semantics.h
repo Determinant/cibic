@@ -120,7 +120,6 @@ struct CScope {
 typedef struct ExpType {
     CType_t type;
     int lval;
-    int is_var;
 } ExpType;
 
 CScope_t cscope_create();
