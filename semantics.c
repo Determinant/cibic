@@ -507,6 +507,11 @@ do { \
     ERROR(ast); \
 } while (0)
 
+#define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
+#define IS_ARITH(tt) IS_INT(tt)
+#define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
+
+ExpType semantics_exp(CNode *, CScope_t);
 CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk) {
     CVar_t type;
     if (p->type == ID) 
@@ -546,13 +551,25 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk
         case DECLR_ARR:
             {
                 CType_t arr = ctype_create("", CARR, p);    /* array declr */
+                CNode *rch = p->chd->next;
+                ExpType tl = semantics_exp(rch, scope);
                 if (!type_is_complete(type_spec))
                 {
                     sprintf(err_buff, "array type has incomplete element type");
                     ERROR(p);
                 }
+                if (!rch->ext.is_const)
+                {
+                    sprintf(err_buff, "size of array must be a constant");
+                    ERROR(p);
+                }
+                if (!IS_INT(tl.type->type))
+                {
+                    sprintf(err_buff, "size of array has non-integer type");
+                    ERROR(p);
+                }
                 arr->rec.arr.elem = type_spec;
-                arr->rec.arr.len = p->chd->next->rec.intval;
+                arr->rec.arr.len = rch->ext.const_val;
                 type = semantics_declr(p->chd, arr, scope, 0);
             }
             break;
@@ -706,11 +723,6 @@ ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
     return lhs;
 }
 
-#define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
-#define IS_ARITH(tt) IS_INT(tt)
-#define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
-
-ExpType semantics_exp(CNode *, CScope_t);
 
 ExpType semantics_cast(CNode *p, CScope_t scope) {
     CNode *chd = p->chd->next;

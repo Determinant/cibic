@@ -90,6 +90,10 @@ int incomp(struct I a);
 
 void (*bsd_signal(int sig, void (*func)(int a)))(int b);
 
+void array() {
+    int a[(1 + 1 ==  2) * 2];
+}
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */
