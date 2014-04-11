@@ -14,6 +14,7 @@ struct CVar {
     CVar_t next;    /* next in the linked list */
     CType_t type;
     int offset;
+    int is_const;
     CNode *ast;
 };
 
@@ -119,6 +120,7 @@ struct CScope {
 typedef struct ExpType {
     CType_t type;
     int lval;
+    int is_var;
 } ExpType;
 
 CScope_t cscope_create();

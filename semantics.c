@@ -710,15 +710,23 @@ ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
 #define IS_ARITH(tt) IS_INT(tt)
 #define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
 
-CType_t semantics_typename(CNode *p, CScope_t scope) {
-    CVar_t var = semantics_declr(p->chd->next,
-                                semantics_type_spec(p->chd, scope),
+ExpType semantics_exp(CNode *, CScope_t);
+
+ExpType semantics_typename(CNode *p, CScope_t scope) {
+    ExpType op = semantics_exp(p->chd->next, scope);
+    CVar_t var = semantics_declr(p->chd->chd->next,
+                                semantics_type_spec(p->chd->chd, scope),
                                 scope, 0);
     CType_t type = var->type;
     free(var);
     if (!IS_SCALAR(type->type))
     {
         sprintf(err_buff, "conversion to non-scalar type requested");
+        ERROR(p);
+    }
+    if (!IS_SCALAR(op.type->type))
+    {
+        sprintf(err_buff, "aggregate value used where a scalar was expected");
         ERROR(p);
     }
     if (type->type == CARR)
@@ -732,7 +740,10 @@ CType_t semantics_typename(CNode *p, CScope_t scope) {
         ERROR(p);
     }
     type->ast = p;
-    return type;
+    op.type = type;
+    op.is_var |= !IS_INT(type->type);
+    op.lval = 0;
+    return op;
 }
 
 
@@ -744,6 +755,7 @@ ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *ast) {
     NOT_IGNORE_VOID(op2.type, ast);
     res.lval = 0;
     res.type = basic_type_int;
+    res.is_var = op1.is_var || op2.is_var;
     if (!(IS_ARITH(t1) && IS_ARITH(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
@@ -760,6 +772,7 @@ ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *ast) {
     NOT_IGNORE_VOID(op2.type, ast);
     res.lval = 0;
     res.type = basic_type_int;
+    res.is_var = op1.is_var || op2.is_var;
     if (!(IS_INT(t1) && IS_INT(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
@@ -791,12 +804,27 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *ast, int sub) {
         n1->next = NULL;
         ast->chd = n2;
     }
-    if (!((t1 == CINT || t1 == CCHAR || t1 == CPTR) &&
-                (t2 == CINT || t2 == CCHAR)))
+    if (sub)
     {
-        sprintf(err_buff, "invalid operands to binary operator");
-        ERROR(ast);
+        if (t2 == CPTR && t1 != CPTR)
+        {
+            sprintf(err_buff, "invalid operands to binary operator");
+            ERROR(ast);
+        }
     }
+    else
+    {
+        if (!((t1 == CINT || t1 == CCHAR || t1 == CPTR) &&
+                    (t2 == CINT || t2 == CCHAR)))
+        {
+            sprintf(err_buff, "invalid operands to binary operator");
+            ERROR(ast);
+        }
+    }
+    /* TODO: constant pointer folding */
+    if (t1 != CPTR && t2 != CPTR)
+        op1.is_var |= op2.is_var;
+    op1.lval = 0;
     return op1; /* int or pointer */
 }
 
@@ -847,6 +875,9 @@ ExpType exp_check_ref(ExpType op1, CNode *ast) {
         sprintf(err_buff, "lvalue required as unary '&' operand");
         ERROR(ast);
     }
+    /* TODO: constant pointer folding */
+    res.is_var = 1;
+    /* should be 0 */
     res.lval = 0;
     res.type = ctype_create("", CPTR, ast);
     res.type->rec.ref = op1.type;
@@ -873,7 +904,6 @@ ExpType exp_check_inc(ExpType op1, CNode *ast) {
     return op1;
 }
 
-ExpType semantics_exp(CNode *, CScope_t);
 
 ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
     int t1 = op1.type->type,
@@ -883,6 +913,7 @@ ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *ast) {
     NOT_IGNORE_VOID(op2.type, ast);
     res.lval = 0;
     res.type = basic_type_int;
+    res.is_var = op1.is_var || op2.is_var;
     if (!(IS_SCALAR(t1) && IS_SCALAR(t2)))
     {
         sprintf(err_buff, "invalid operands to binary operator");
@@ -926,6 +957,7 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *ast) {
     NOT_IGNORE_VOID(op2.type, ast);
     res.lval = 0;
     res.type = basic_type_int;
+    res.is_var = op1.is_var || op2.is_var;
     if (IS_ARITH(t1) && IS_ARITH(t2))
         return res;
     if (!(IS_SCALAR(t1) && IS_SCALAR(t2)))
@@ -1066,14 +1098,17 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             }
             res.type = p->ext.var->type;
             res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
+            res.is_var = 1;
             FUNC_POINTER_CONV(res.type);
             break;
         case INT:
             res.type = basic_type_int;
+            res.is_var = 0;
             res.lval = 0;
             break;
         case CHAR:
             res.type = basic_type_char;
+            res.is_var = 0;
             res.lval = 0;
             break;
         case STR:
@@ -1081,6 +1116,8 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 CType_t type = ctype_create("", CPTR, NULL);
                 type->rec.ref = basic_type_char;
                 res.type = type;
+                res.is_var = 0;
+                res.lval = 0;
             }
             break;
         case EXP:
@@ -1135,8 +1172,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                         res = exp_check_arith(op1, op2, p);
                         break;
                     case EXP_CAST:
-                        res.type = semantics_typename(p->chd, scope);
-                        res.lval = 0;
+                        res = semantics_typename(p, scope);
                         break;
                     case '&':
                         if (p->chd->next)

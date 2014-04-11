@@ -88,6 +88,8 @@ int f(int f()) {
 
 int incomp(struct I a);
 
+void (*bsd_signal(int sig, void (*func)(int a)))(int b);
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */
