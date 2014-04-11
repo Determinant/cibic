@@ -396,13 +396,17 @@ int is_same_type(CType_t typea, CType_t typeb) {
         case CFUNC:
             {
                 CVar_t pa, pb;
-                for (pa = typea->rec.func.params, 
-                        pb = typeb->rec.func.params; pa && pb;
-                        pa = pa->next, pb = pb->next)
-                    if (!is_same_type(pa->type, pb->type))
-                        return 0;
-                if (pa || pb) 
-                    return 0; /* different number of parameters */
+                if ((typea->rec.func.params || typea->rec.func.body) &&
+                        (typeb->rec.func.params || typeb->rec.func.body))
+                {
+                    for (pa = typea->rec.func.params, 
+                            pb = typeb->rec.func.params; pa && pb;
+                            pa = pa->next, pb = pb->next)
+                        if (!is_same_type(pa->type, pb->type))
+                            return 0;
+                    if (pa || pb) 
+                        return 0; /* different number of parameters */
+                }
                 return is_same_type(typea->rec.func.ret, typeb->rec.func.ret);
             }
         case CINT: case CCHAR: case CVOID:
@@ -688,6 +692,11 @@ void semantics_initr(CNode *p, CScope_t scope, CType_t type) {
         break;
         case INITR_ARR:
         {
+            if (type->type == CARR)
+            {
+                /* warning if declr is not an array */
+                type = type->rec.arr.elem;
+            }
             for (p = p->chd; p; p = p->next)
                 semantics_initr(p, scope, type);
         }
@@ -716,7 +725,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             CVar_t var = semantics_declr(p->chd, type, scope, 0);
             /* check initializer */
             if (initr->type == INITR)
-                semantics_initr(initr, scope, type);
+                semantics_initr(initr, scope, var->type);
             if (scope->lvl && !type_is_complete(var->type))
             {
                 sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
@@ -964,10 +973,13 @@ ExpType exp_check_ref(ExpType op1, CNode *p) {
     return res;
 }
 
-ExpType exp_check_sizeof(ExpType op1) {
-    op1.lval = 0;
-    op1.type = basic_type_int;
-    return op1;
+ExpType exp_check_sizeof(CNode *p, CScope_t scope) {
+    if (p->chd->type == EXP)
+        semantics_exp(p->chd, scope);
+    ExpType res;
+    res.lval = 0;
+    res.type = basic_type_int;
+    return res;
 }
 
 ExpType exp_check_inc(ExpType op1, CNode *p) {
@@ -1125,17 +1137,19 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 CVar_t param;
                 /* pointer to function */
                 if (func->type == CPTR) func = func->rec.ref;
-                param = func->rec.func.params;
-                for (; arg && param;
-                        arg = arg->next, param = param->next) 
+                if ((param = func->rec.func.params))
                 {
-                    semantics_exp(arg, scope);
-                    exp_check_aseq_(param->type, arg->ext.type, arg);
-                }
-                if (arg || param)
-                {
-                    sprintf(err_buff, "too many/few arguments to the function");
-                    ERROR(p);
+                    for (; arg && param;
+                            arg = arg->next, param = param->next) 
+                    {
+                        semantics_exp(arg, scope);
+                        exp_check_aseq_(param->type, arg->ext.type, arg);
+                    }
+                    if (arg || param)
+                    {
+                        sprintf(err_buff, "too many/few arguments to the function");
+                        ERROR(p);
+                    }
                 }
                 op1.type = func->rec.func.ret;
                 op1.lval = 0;
@@ -1237,107 +1251,110 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             {
                 ExpType op1;
                 ExpType op2;
-                if (!(p->rec.subtype == EXP_CAST || p->rec.subtype == EXP_POSTFIX))
-                {
-                    op1 = semantics_exp(p->chd, scope);
-                    if (p->chd->next)
-                        op2 = semantics_exp(p->chd->next, scope);
-                }
                 switch (p->rec.subtype)
                 {
-                    /* following cases are binary expressions */
-                    case ',': 
-                        res = op2;
-                        res.lval = 0;
-                        break;
-                    case '=' : 
-                    case ASS_MUL:
-                    case ASS_DIV:
-                    case ASS_MOD:
-                    case ASS_ADD:
-                    case ASS_SUB:
-                    case ASS_SHL:
-                    case ASS_SHR:
-                    case ASS_AND:
-                    case ASS_XOR:
-                    case ASS_OR:
-                        res = exp_check_ass(op1, op2, p);
-                        break;
-                    case OPT_OR:
-                        res = exp_check_logical(op1, op2, p, '|');
-                        break;
-                    case OPT_AND:
-                        res = exp_check_logical(op1, op2, p, '&');
-                        break;
-                    case OPT_SHL:
-                    case OPT_SHR:
-                    case '|':
-                    case '^':
-                        res = exp_check_bitwise(op1, op2, p, p->rec.subtype);
-                        break;
-                    case OPT_EQ:
-                    case OPT_NE:
-                    case '<':
-                    case '>' :
-                    case OPT_LE:
-                    case OPT_GE:
-                        res = exp_check_equality(op1, op2, p, p->rec.subtype);
-                        break;
-                    case '/': 
-                    case '%':
-                        res = exp_check_arith(op1, op2, p, p->rec.subtype);
-                        break;
                     case EXP_CAST:
                         res = semantics_cast(p, scope);
-                        break;
-                    case '&':
-                        if (p->chd->next)
-                            res = exp_check_bitwise(op1, op2, p, '&');
-                        else
-                            res = exp_check_ref(op1, p);
-                        break;
-                    case '*': 
-                        if (p->chd->next)
-                            res = exp_check_arith(op1, op2, p, '*');
-                        else
-                            res = exp_check_deref(op1, p);
-                        break;
-                    case '+':
-                        if (p->chd->next)
-                            res = exp_check_add(op1, op2, p, '+');
-                        else
-                        {
-                            res = op1;
-                            res.lval = 0;
-                        }
-                        break;
-                    case '-':
-                        if (p->chd->next)
-                            res = exp_check_add(op1, op2, p, '-');
-                        else
-                        {
-                            res = op1;
-                            res.lval = 0;
-                        }
-                        break;
-                    case '~':
-                        res = exp_check_int(op1, p);
-                        break;
-                    case '!':
-                        res = exp_check_scalar(op1, p);
-                        break;
-                    case OPT_INC: case OPT_DEC:
-                        res = exp_check_inc(op1, p);
-                        break;
-                    case KW_SIZEOF:
-                        res = exp_check_sizeof(op1);
                         break;
                     case EXP_POSTFIX:
                         res = exp_check_postfix(p, scope);
                         break;
-                    default: 
-                        printf("%d\n", p->rec.subtype);
-                        assert(0);
+                    case KW_SIZEOF:
+                        res = exp_check_sizeof(p, scope);
+                        break;
+                    default:
+                        {
+                            op1 = semantics_exp(p->chd, scope);
+                            if (p->chd->next)
+                                op2 = semantics_exp(p->chd->next, scope);
+                            switch (p->rec.subtype)
+                            {
+                                /* following cases are binary expressions */
+                                case ',': 
+                                    res = op2;
+                                    res.lval = 0;
+                                    break;
+                                case '=' : 
+                                case ASS_MUL:
+                                case ASS_DIV:
+                                case ASS_MOD:
+                                case ASS_ADD:
+                                case ASS_SUB:
+                                case ASS_SHL:
+                                case ASS_SHR:
+                                case ASS_AND:
+                                case ASS_XOR:
+                                case ASS_OR:
+                                    res = exp_check_ass(op1, op2, p);
+                                    break;
+                                case OPT_OR:
+                                    res = exp_check_logical(op1, op2, p, '|');
+                                    break;
+                                case OPT_AND:
+                                    res = exp_check_logical(op1, op2, p, '&');
+                                    break;
+                                case OPT_SHL:
+                                case OPT_SHR:
+                                case '|':
+                                case '^':
+                                    res = exp_check_bitwise(op1, op2, p, p->rec.subtype);
+                                    break;
+                                case OPT_EQ:
+                                case OPT_NE:
+                                case '<':
+                                case '>' :
+                                case OPT_LE:
+                                case OPT_GE:
+                                    res = exp_check_equality(op1, op2, p, p->rec.subtype);
+                                    break;
+                                case '/': 
+                                case '%':
+                                    res = exp_check_arith(op1, op2, p, p->rec.subtype);
+                                    break;
+                                case '&':
+                                    if (p->chd->next)
+                                        res = exp_check_bitwise(op1, op2, p, '&');
+                                    else
+                                        res = exp_check_ref(op1, p);
+                                    break;
+                                case '*': 
+                                    if (p->chd->next)
+                                        res = exp_check_arith(op1, op2, p, '*');
+                                    else
+                                        res = exp_check_deref(op1, p);
+                                    break;
+                                case '+':
+                                    if (p->chd->next)
+                                        res = exp_check_add(op1, op2, p, '+');
+                                    else
+                                    {
+                                        res = op1;
+                                        res.lval = 0;
+                                    }
+                                    break;
+                                case '-':
+                                    if (p->chd->next)
+                                        res = exp_check_add(op1, op2, p, '-');
+                                    else
+                                    {
+                                        res = op1;
+                                        res.lval = 0;
+                                    }
+                                    break;
+                                case '~':
+                                    res = exp_check_int(op1, p);
+                                    break;
+                                case '!':
+                                    res = exp_check_scalar(op1, p);
+                                    break;
+                                case OPT_INC: case OPT_DEC:
+                                    res = exp_check_inc(op1, p);
+                                    break;
+                                default: 
+                                    printf("%d\n", p->rec.subtype);
+                                    assert(0);
+                            }
+                        }
                 }
             }
             break;
@@ -1565,6 +1582,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
             sprintf(err_buff, "function defintion does not match the prototype");
             ERROR(res->ast);
         }
+        funco->rec.func.params = res->type->rec.func.params;
         funco->rec.func.local = res->type->rec.func.local;
         funco->rec.func.body = res->type->rec.func.body;
         free(res);

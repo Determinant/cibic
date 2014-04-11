@@ -1,5 +1,9 @@
 #! /bin/bash
-for file in testcases/*.c
+dir=testcases/*.c
+if [ "$#" != 0 ]; then
+    dir=$1
+fi
+for file in $dir
 do
     gcc $file -o /dev/null &> /dev/null
     gcc_ret="$?"

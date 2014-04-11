@@ -82,8 +82,8 @@ int fp(int a, int b, int c) {
     f = &fp + 1;
 }
 
-int f(int f()) {
-    f(complex_pointer);
+int fc(int fc()) {
+    fc(complex_pointer);
 }
 
 int incomp(struct I a);
