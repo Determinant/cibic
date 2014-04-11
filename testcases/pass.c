@@ -98,6 +98,8 @@ void local_decl() {
     int y = y;
     {
         int x = x;
+        int a;
+        int b = a = 2;
     }
 }
 
