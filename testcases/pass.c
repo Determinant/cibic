@@ -94,6 +94,13 @@ void array() {
     int a[(1 + 1 ==  2) * 2];
 }
 
+void local_decl() {
+    int y = y;
+    {
+        int x = x;
+    }
+}
+
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */

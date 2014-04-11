@@ -42,6 +42,7 @@ do { \
 } while (0)
 
 #define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
+#define IS_PTR(tt) ((tt) == CPTR || (tt) == CARR)
 #define IS_ARITH(tt) IS_INT(tt)
 #define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
 
@@ -51,6 +52,9 @@ static char err_buff[MAX_ERROR_BUFF];
 static CType_t basic_type_int; 
 static CType_t basic_type_char;
 static CType_t basic_type_void;
+static CVar_t builtin_printf;
+static CVar_t builtin_scanf;
+static CVar_t builtin_malloc;
 
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
@@ -688,8 +692,16 @@ void semantics_initr(CNode *p, CScope_t scope, CType_t type) {
     switch (p->rec.subtype)
     {
         case INITR_NORM: 
-           exp_check_aseq_(type, semantics_exp(p->chd, scope).type, p);
-        break;
+            {
+                ExpType et = semantics_exp(p->chd, scope);
+                if (!scope->lvl && !p->chd->ext.is_const)  /* in global scope */
+                {
+                    sprintf(err_buff, "initializer element is not constant");
+                    ERROR(p->chd);
+                }
+                exp_check_aseq_(type, et.type, p);
+            }
+            break;
         case INITR_ARR:
         {
             if (type->type == CARR)
@@ -723,9 +735,6 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         {
             CNode *initr = p->chd->next;
             CVar_t var = semantics_declr(p->chd, type, scope, 0);
-            /* check initializer */
-            if (initr->type == INITR)
-                semantics_initr(initr, scope, var->type);
             if (scope->lvl && !type_is_complete(var->type))
             {
                 sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
@@ -734,6 +743,9 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             var = var_merge(var, scope);
             var->next = res;
             res = var;
+            /* check initializer */
+            if (initr->type == INITR)
+                semantics_initr(initr, scope, var->type);
         }
         useful = 1;
     }
@@ -862,7 +874,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         t2 = op2.type->type;
     NOT_IGNORE_VOID(op1.type, p);
     NOT_IGNORE_VOID(op2.type, p);
-    if (kind == '+' && t2 == CPTR) 
+    if (kind == '+' && IS_PTR(t2)) 
     {
         /* place the pointer type in the first place */
         int t = t1;
@@ -882,7 +894,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
     }
     if (kind == '-')
     {
-        if (t2 == CPTR && t1 != CPTR)
+        if (IS_PTR(t2) && !IS_PTR(t1))
         {
             sprintf(err_buff, "invalid operands to binary operator");
             ERROR(p);
@@ -890,8 +902,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
     }
     else
     {
-        if (!((t1 == CINT || t1 == CCHAR || t1 == CPTR) &&
-                    (t2 == CINT || t2 == CCHAR)))
+        if (!((IS_INT(t1) || IS_PTR(t1)) && IS_INT(t2)))
         {
             sprintf(err_buff, "invalid operands to binary operator");
             ERROR(p);
@@ -902,7 +913,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         int l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
-        if (t1 != CPTR && t2 != CPTR)
+        if (!IS_PTR(t1) && !IS_PTR(t2))
             switch (kind)
             {
                 case '+': *a = l + r; break;
@@ -938,7 +949,7 @@ ExpType exp_check_scalar(ExpType op1, CNode *p) {
 }
 
 ExpType exp_check_deref(ExpType op1, CNode *p) {
-    if (op1.type->type != CPTR)
+    if (!IS_PTR(op1.type->type))
     {
         sprintf(err_buff, "invalid type argument of unary '*'");
         ERROR(p);
@@ -1087,7 +1098,7 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *p, int kind) {
         sprintf(err_buff, "invalid operands to binary operator");
         ERROR(p);
     }
-    if (t1 == CPTR && t2 == CPTR)
+    if (IS_PTR(t1) && IS_PTR(t2))
     {
         if (!is_same_type(op1.type->rec.ref, op2.type->rec.ref))
         {
@@ -1095,7 +1106,7 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *p, int kind) {
             WARNING(p);
         }
     }
-    else if (t1 == CPTR || t2 == CPTR)
+    else if (IS_PTR(t1) || IS_PTR(t2))
     {
         sprintf(err_buff, "comparison between pointer and integer");
         WARNING(p);
@@ -1110,7 +1121,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
     switch (post->rec.subtype)
     {
         case POSTFIX_ARR:
-            if (!(t1 == CARR || t1 == CPTR))
+            if (!IS_PTR(t1))
             {
                 sprintf(err_buff, "subscripted value is neither array nor pointer");
                 ERROR(p);
@@ -1600,15 +1611,35 @@ void semantics_check_(CNode *p, CScope_t scope) {
     }
 }
 
+CVar_t make_builtin_func(const char *name, CType_t rt) {
+    CType_t func = ctype_create(name, CFUNC, NULL);
+    CVar_t res = cvar_create(name, func, NULL);
+    func->rec.func.params = NULL;
+    func->rec.func.body = NULL;
+    func->rec.func.local = NULL;
+    func->rec.func.ret = rt;
+    return res;
+}
+
 void semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
     basic_type_char = ctype_create("char", CCHAR, NULL);
     basic_type_void = ctype_create("void", CVOID, NULL);
+    builtin_printf = make_builtin_func("printf", basic_type_int);
+    builtin_scanf = make_builtin_func("scanf", basic_type_int);
+    {
+        CType_t vstar = ctype_create("", CPTR, NULL);
+        vstar->rec.ref = basic_type_void;
+        builtin_malloc = make_builtin_func("malloc", vstar);
+    }
     /* add top-level basic types */
     cscope_push_type(scope, basic_type_int);
     cscope_push_type(scope, basic_type_char);
     cscope_push_type(scope, basic_type_void);
+    cscope_push_var(scope, builtin_printf);
+    cscope_push_var(scope, builtin_scanf);
+    cscope_push_var(scope, builtin_malloc);
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {
