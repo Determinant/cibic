@@ -9,6 +9,42 @@
 #define ERROR(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 0)
 #define WARNING(ast) print_error(err_buff, NULL, (ast)->loc.row, (ast)->loc.col, 1)
 
+#define NOT_IGNORE_VOID(et, ast) \
+    if (et->type == CVOID) \
+do \
+{ \
+    sprintf(err_buff, "void value not ignored as it ought to be"); \
+    ERROR(ast); \
+} while (0)
+
+#define INCOMP_TYPE(ast) \
+    do { \
+        sprintf(err_buff, "incompatible types when assigning"); \
+        ERROR(ast); \
+    } while (0)
+
+/* pointer to function conversion (std 6.3.2/4) */
+#define FUNC_POINTER_CONV(t) \
+    do { \
+        if ((t)->type == CFUNC) \
+        { \
+            CType_t f = ctype_create("", CPTR, p); \
+            f->rec.ref = t; \
+            t = f; \
+        } \
+    } while (0)
+
+#define CHECK_CVOID(name, ast) \
+    if (type_spec->type == CVOID) \
+do { \
+    sprintf(err_buff, "variable or field '%s' declared void", name); \
+    ERROR(ast); \
+} while (0)
+
+#define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
+#define IS_ARITH(tt) IS_INT(tt)
+#define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
+
 extern void print_error(char *, char *, int, int, int);
 extern char *load_line(int);
 static char err_buff[MAX_ERROR_BUFF];
@@ -459,16 +495,6 @@ CVar_t semantics_p_decl(CNode *p, CScope_t scope) {
     return var;
 }
 
-/* pointer to function conversion (std 6.3.2/4) */
-#define FUNC_POINTER_CONV(t) \
-    do { \
-        if ((t)->type == CFUNC) \
-        { \
-            CType_t f = ctype_create("", CPTR, p); \
-            f->rec.ref = t; \
-            t = f; \
-        } \
-    } while (0)
 
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
@@ -499,17 +525,6 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
     tail->next = NULL;
     return params;
 }
-
-#define CHECK_CVOID(name, ast) \
-    if (type_spec->type == CVOID) \
-do { \
-    sprintf(err_buff, "variable or field '%s' declared void", name); \
-    ERROR(ast); \
-} while (0)
-
-#define IS_INT(tt) ((tt) == CINT || (tt) == CCHAR)
-#define IS_ARITH(tt) IS_INT(tt)
-#define IS_SCALAR(tt) (!((tt) == CUNION || (tt) == CSTRUCT))
 
 ExpType semantics_exp(CNode *, CScope_t);
 CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk) {
@@ -620,59 +635,6 @@ CTable_t semantics_fields(CNode *p, CScope_t scope) {
     return ct;
 }
 
-CVar_t semantics_decl(CNode *p, CScope_t scope) {
-    CHECK_TYPE(p, DECL);
-    CNode *declr = p->chd->next;
-    CType_t type = semantics_type_spec(p->chd, scope);
-    CVar_t res = NULL;
-    int useful = 0;
-    if ((type->type == CSTRUCT || type->type == CUNION) && 
-            (*type->name) != '\0')
-    {
-        cscope_push_type(scope, type);
-        useful = 1;
-    }
-    if (declr->chd->type != NOP)
-    {
-        CNode *p;
-        for (p = declr->chd; p; p = p->next)
-        {
-            /* TODO: initializer checking */
-            CVar_t var = semantics_declr(p->chd, type, scope, 0);
-            if (scope->lvl && !type_is_complete(var->type))
-            {
-                sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
-                ERROR(var->ast);
-            }
-            var = var_merge(var, scope);
-            var->next = res;
-            res = var;
-        }
-        useful = 1;
-    }
-    if (!useful)
-    {
-        /* useless typename warning */
-        sprintf(err_buff, "useless declaration");
-        WARNING(type->ast);
-    }
-    return res;
-}
-
-#define NOT_IGNORE_VOID(et, ast) \
-    if (et->type == CVOID) \
-do \
-{ \
-    sprintf(err_buff, "void value not ignored as it ought to be"); \
-    ERROR(ast); \
-} while (0)
-
-#define INCOMP_TYPE(ast) \
-    do { \
-        sprintf(err_buff, "incompatible types when assigning"); \
-        ERROR(ast); \
-    } while (0)
-
 void exp_check_aseq_(CType_t lhs, CType_t rhs, CNode *ast) {
     NOT_IGNORE_VOID(lhs, ast);
     NOT_IGNORE_VOID(rhs, ast);
@@ -717,6 +679,65 @@ void exp_check_aseq_(CType_t lhs, CType_t rhs, CNode *ast) {
         default: assert(0);
     }
 }
+
+void semantics_initr(CNode *p, CScope_t scope, CType_t type) {
+    switch (p->rec.subtype)
+    {
+        case INITR_NORM: 
+           exp_check_aseq_(type, semantics_exp(p->chd, scope).type, p);
+        break;
+        case INITR_ARR:
+        {
+            for (p = p->chd; p; p = p->next)
+                semantics_initr(p, scope, type);
+        }
+        break;
+    }
+}
+
+CVar_t semantics_decl(CNode *p, CScope_t scope) {
+    CHECK_TYPE(p, DECL);
+    CNode *declr = p->chd->next;
+    CType_t type = semantics_type_spec(p->chd, scope);
+    CVar_t res = NULL;
+    int useful = 0;
+    if ((type->type == CSTRUCT || type->type == CUNION) && 
+            (*type->name) != '\0')
+    {
+        cscope_push_type(scope, type);
+        useful = 1;
+    }
+    if (declr->chd->type != NOP)
+    {
+        CNode *p;
+        for (p = declr->chd; p; p = p->next)
+        {
+            CNode *initr = p->chd->next;
+            CVar_t var = semantics_declr(p->chd, type, scope, 0);
+            /* check initializer */
+            if (initr->type == INITR)
+                semantics_initr(initr, scope, type);
+            if (scope->lvl && !type_is_complete(var->type))
+            {
+                sprintf(err_buff, "storage size of '%s' isn’t known", var->name);
+                ERROR(var->ast);
+            }
+            var = var_merge(var, scope);
+            var->next = res;
+            res = var;
+        }
+        useful = 1;
+    }
+    if (!useful)
+    {
+        /* useless typename warning */
+        sprintf(err_buff, "useless declaration");
+        WARNING(type->ast);
+    }
+    return res;
+}
+
+
 
 ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
     exp_check_aseq_(lhs.type, rhs.type, ast);
