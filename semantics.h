@@ -142,7 +142,7 @@ struct CDef {
 };
 CDef_t cdef_create(const char *name, CType_t type, CNode *ast);
 
-CScope_t cscope_create();
+CScope_t cscope_create(void);
 CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace);
 int cscope_push_var(CScope_t cs, CVar_t var, int nspace);
 int cscope_push_def(CScope_t cs, CDef_t def, int nspace);
@@ -156,13 +156,11 @@ const char *ctable_cvar_print(void *var);
 
 void semantics_check(CNode *ast);
 int is_identifier(const char *name);
-void declr_begin();
-void declr_end();
 void push(const char *name);
-void cibic_init();
-void enter_block();
-void exit_block();
-void enter_typedef();
-void exit();
-void enter_declr();
+void cibic_init(void);
+void enter_block(void);
+void exit_block(void);
+void force_id(void);
+void enter_typedef(void);
+void clear_state(void);
 #endif
