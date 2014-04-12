@@ -10,6 +10,8 @@ typedef struct CVar CVar;
 typedef CVar *CVar_t;
 typedef struct CSymbol CSymbol;
 typedef CSymbol *CSymbol_t;
+typedef struct CDef CDef;
+typedef CDef *CDef_t;
 
 struct CVar {
     const char *name;
@@ -121,19 +123,29 @@ typedef struct ExpType {
 struct CSymbol {
     enum {
         CTYPE,
-        CVAR
+        CVAR,
+        CDEF
     } kind;
     union {
         CType_t type;
         CVar_t var;
+        CDef_t def;
     } rec;
 };
 const char *csymbol_print(void *csym);
 const char *csym_getname(CSymbol_t csym);
 
+struct CDef {
+    const char *name;
+    CType_t type;
+    CNode *ast;
+};
+CDef_t cdef_create(const char *name, CType_t type, CNode *ast);
+
 CScope_t cscope_create();
 CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace);
 int cscope_push_var(CScope_t cs, CVar_t var, int nspace);
+int cscope_push_def(CScope_t cs, CDef_t def, int nspace);
 int cscope_push_type(CScope_t cs, CType_t type, int nspace);
 void cscope_enter(CScope_t cs);
 void cscope_exit(CScope_t cs);
@@ -143,4 +155,14 @@ unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
 
 void semantics_check(CNode *ast);
+int is_identifier(const char *name);
+void declr_begin();
+void declr_end();
+void push(const char *name);
+void cibic_init();
+void enter_block();
+void exit_block();
+void enter_typedef();
+void exit();
+void enter_declr();
 #endif

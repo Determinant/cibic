@@ -1,5 +1,6 @@
 %{
 #include "cibic.tab.h"
+#include "semantics.h"
 #define MAX_LINEBUFF 1024
 int yycolumn = 1;
 char linebuff[MAX_LINEBUFF], *lptr = linebuff;
@@ -69,10 +70,11 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 "break"                                     { return KW_BREAK; }
 "return"                                    { return KW_RET; }
 "sizeof"                                    { return KW_SIZEOF; }
+"typedef"                                   { return KW_TYPEDEF; }
 
 {letter}({letter}|{digit})*                 {
     yylval.strval = strdup(yytext);
-    return IDENTIFIER;
+    return is_identifier(yytext) ? IDENTIFIER : USER_TYPE;
 }
 
 ({digit}+)|(0[xX][0-9a-fA-F]+)              {

@@ -210,6 +210,19 @@ CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr) {
     return pdecl;
 }
 
+CNode *cnode_create_typedef(CNode *type, CNode *declrs) {
+#ifdef CIBIC_DEBUG
+    assert(type->next == NULL);
+    assert(declrs->next == NULL);
+#endif
+    CNode *def = NEW_CNODE;
+    def->type = TYPEDEF;
+    def->next = NULL;
+    def->chd = declrs;
+    declrs->next = type;
+    return def;
+}
+
 CNode *cnode_list_wrap(int type, CNode *list) {
     CNode *wlist = NEW_CNODE;
     wlist->type = type;
@@ -237,6 +250,7 @@ char *cnode_debug_type_repr(CNode *ast) {
         case INIT_DECLRS: type = "init_declrs"; break;
         case ARGS:  type = "args"; break;
         case PARAMS: type = "params"; break;
+        case TYPEDEF: type = "typedef"; break;
         case ID:
             type = "id";
             aptr += sprintf(abuff, "%s", ast->rec.strval);
@@ -320,6 +334,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             case KW_INT: type = "int"; break;
             case KW_STRUCT: type = "struct"; break;
             case KW_UNION: type = "union"; break;
+            case USER_TYPE: type = "user_type"; break;
             default: assert(0);
         }
     }

@@ -22,6 +22,7 @@ typedef struct CNode {
         PLAIN_DECL,
         DECLS,
         FUNCS,
+        TYPEDEF,
 
         /* Statments */
         STMT,
@@ -75,6 +76,7 @@ CNode *cnode_create_func(CNode *type, CNode *declr, CNode *stmt);
 CNode *cnode_create_init_declr(CNode *declr, CNode *initr);
 CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs);
 CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr);
+CNode *cnode_create_typedef(CNode *type, CNode *declrs);
 
 CNode *cnode_create_identifier(char *val);
 CNode *cnode_create_int_const(int val);

@@ -109,6 +109,21 @@ struct Node {int x, y;} n;
 int again;
 int again;
 
+typedef int def;
+int typedef1() {
+    int def; /* overrides outer typedef */
+    def = 1;
+}
+typedef int *ptr1;
+int typedef2() {
+    typedef int **ptr2;
+    {
+        typedef int ***ptr3;
+        ptr3 ptr2;
+        ptr3 ptr1;
+    }
+}
+
 int main() {
     n.x = 1;
     n.y = 2;

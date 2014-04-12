@@ -8,9 +8,10 @@ do
     gcc $file -o /dev/null &> /dev/null
     gcc_ret="$?"
     ./cibic $file &> /dev/null
-    if [ $? -ne $gcc_ret ]; then
+    ret=$?
+    if [ $ret -ne $gcc_ret ]; then
         echo "Failed on $file"
     else
-        echo "ok $file"
+        echo "ok $file: $ret"
     fi
 done

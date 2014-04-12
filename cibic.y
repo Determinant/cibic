@@ -9,17 +9,17 @@
     struct CNode *cnode;
 }
 %error-verbose
-%token IDENTIFIER "identifier" INT_CONST "integer constant" CHAR_CONST "character constant" STR_CONST "string constant"
-%token KW_VOID "void" KW_CHAR "char" KW_INT "int" KW_STRUCT "struct" KW_UNION "union" KW_IF "if" KW_ELSE "else" KW_WHILE "while"
+%token IDENTIFIER "identifier" INT_CONST "integer constant" CHAR_CONST "character constant" STR_CONST "string constant" USER_TYPE "typedef name"
+%token KW_VOID "void" KW_CHAR "char" KW_INT "int" KW_STRUCT "struct" KW_UNION "union" KW_IF "if" KW_ELSE "else" KW_WHILE "while" KW_TYPEDEF "typedef"
 %token KW_FOR "for" KW_CONT "continue" KW_BREAK "break" KW_RET "ret" KW_SIZEOF "sizeof"
 %token OPT_OR "||" OPT_AND "&&" OPT_EQ "==" OPT_NE "!=" OPT_LE "<=" OPT_GE ">=" OPT_SHL "<<" OPT_SHR ">>" OPT_INC "++" OPT_DEC "--" OPT_PTR "->"
 %token ASS_MUL "*=" ASS_DIV "/=" ASS_MOD "%=" ASS_ADD "+=" ASS_SUB "-=" ASS_SHL "<<=" ASS_SHR ">>=" ASS_AND "&=" ASS_XOR "^=" ASS_OR "|="
 %token UNKNOWN "stray character"
 %token END 0 "end of file"
 %type<intval> INT_CONST
-%type<strval> IDENTIFIER STR_CONST CHAR_CONST
+%type<strval> IDENTIFIER STR_CONST CHAR_CONST USER_TYPE
 %type<intval> additive_operator assignment_operator equality_operator multiplicative_operator relational_operator shift_operator struct_or_union unary_operator
-%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration direct_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression abstract_declarator direct_abstract_declarator direct_abstract_declarator_opt abstract_declarator_opt
+%type<cnode> additive_expression and_expression arguments array_initializer assignment_expression cast_expression comp_decls compound_statement comp_stmts constant_expression declaration declarator declarators equality_expression exclusive_or_expression expression expression_statement function_definition identifier inclusive_or_expression init_declarator init_declarators initializer iteration_statement jump_statement logical_and_expression logical_or_expression multiplicative_expression optional_exp parameters plain_declaration direct_declarator postfix postfix_expression primary_expression prog_list program relational_expression selection_statement shift_expression statement struct_field struct_fields type_name type_specifier unary_expression abstract_declarator direct_abstract_declarator direct_abstract_declarator_opt abstract_declarator_opt user_type
 %start program
 %%
 program
@@ -32,15 +32,22 @@ prog_list
     | prog_list function_definition { $$ = cnode_list_append($1, $2); }
 
 declaration
-    : type_specifier ';' {
+    : KW_TYPEDEF type_specifier { enter_typedef(); } declarators ';' {
+        $$ = cnode_add_loc(cnode_create_typedef(
+                            $2,
+                            cnode_add_loc(cnode_list_wrap(DECLRS, $4), @4)), @$);
+        exit_declr();
+    }
+    | type_specifier ';' {
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
                             cnode_list_wrap(INIT_DECLRS, cnode_create_nop())), @$);
     }
-    | type_specifier init_declarators ';' {
+    | type_specifier init_declarators  ';' {
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
                             cnode_add_loc(cnode_list_wrap(INIT_DECLRS, $2), @2)), @$);
+        exit_declr();
     }
 
 function_definition
@@ -75,18 +82,25 @@ array_initializer
         $$ = cnode_list_append(cnode_add_loc($1, @1), $3); }
 
 type_specifier
-    : KW_VOID { $$ = cnode_add_loc(cnode_create_type_spec(KW_VOID, 0), @$); }
-    | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); }
-    | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); }
+    : KW_VOID { $$ = cnode_add_loc(cnode_create_type_spec(KW_VOID, 0), @$); enter_declr(); }
+    | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); enter_declr(); }
+    | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); enter_declr(); }
     | struct_or_union identifier '{' struct_fields '}' {
         $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$);
+        enter_declr();
     }
     | struct_or_union '{' struct_fields '}'            {
         $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $3), @3)), @$);
+        enter_declr();
     }
     | struct_or_union identifier {
         $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_create_nop()), @$);
+        enter_declr();
     }
+    | user_type { $$ = cnode_add_loc(cnode_create_type_spec(USER_TYPE, 1, $1), @$); enter_declr(); }
+
+user_type
+    : USER_TYPE { $$ = cnode_add_loc(cnode_create_identifier($1), @$); }
 
 struct_fields
     : struct_field
@@ -94,8 +108,10 @@ struct_fields
 struct_field
     : type_specifier declarators ';' {
         $$ = cnode_add_loc(
-                cnode_create_struct_field($1,
-                                        cnode_add_loc(cnode_list_wrap(DECLRS, $2), @2)), @$);
+                cnode_create_struct_field(
+                    $1,
+                    cnode_add_loc(cnode_list_wrap(DECLRS, $2), @2)), @$);
+        exit_declr();
     }
 
 struct_or_union
@@ -103,10 +119,13 @@ struct_or_union
     | KW_UNION { $$ = KW_UNION; }
 
 plain_declaration
-    : type_specifier declarator { $$ = cnode_add_loc(cnode_create_plain_decl($1, $2), @$); }
+    : type_specifier declarator {
+        $$ = cnode_add_loc(cnode_create_plain_decl($1, $2), @$);
+        exit_declr();
+    }
 
 direct_declarator
-    : identifier
+    : identifier { push($1->rec.strval); }
     | '(' declarator ')' { $$ = $2; }
     | direct_declarator '(' parameters ')' {
         $$ = cnode_add_loc(cnode_create_declr(
@@ -134,10 +153,11 @@ expression_statement
     | expression ';'    { $$ = cnode_add_loc(cnode_create_stmt(STMT_EXP, 1, $1), @$); }
 
 compound_statement
-    : '{' comp_decls comp_stmts '}' {
+    : { exit_declr(); enter_block(); } '{' comp_decls comp_stmts '}' {
         $$ = cnode_add_loc(
-                cnode_create_stmt(STMT_COMP, 2, cnode_add_loc(cnode_list_wrap(COMP_DECLS, $2), @2),
-                                                cnode_add_loc(cnode_list_wrap(COMP_STMTS, $3), @3)), @$);
+                cnode_create_stmt(STMT_COMP, 2, cnode_add_loc(cnode_list_wrap(COMP_DECLS, $3), @3),
+                                                cnode_add_loc(cnode_list_wrap(COMP_STMTS, $4), @4)), @$);
+        exit_block();
     }
 
 comp_decls
@@ -291,7 +311,9 @@ cast_expression
 
 type_name
     : type_specifier abstract_declarator_opt {
-        $$ = cnode_add_loc(cnode_create_declr(0, 2, $1, $2), @$); }
+        $$ = cnode_add_loc(cnode_create_declr(0, 2, $1, $2), @$);
+        exit_declr();
+    }
 
 abstract_declarator_opt
     : { $$ = cnode_create_nop(); }

@@ -69,8 +69,13 @@ static void warning_print(CNode *ast, const char *fmt, ...) {
 }
 
 const char *csymbol_getname(CSymbol_t sym) {
-    return (sym->kind == CVAR) ? 
-            sym->rec.var->name : sym->rec.type->name;
+    switch (sym->kind)
+    {
+        case CVAR: return sym->rec.var->name;
+        case CTYPE: return sym->rec.type->name;
+        case CDEF: return sym->rec.def->name;
+    }
+    return NULL;
 }
 
 #ifdef CIBIC_DEBUG
@@ -195,6 +200,18 @@ int cscope_push_type(CScope_t cs, CType_t type, int nspace) {
     return 1;
 }
 
+int cscope_push_def(CScope_t cs, CDef_t def, int nspace) {
+    CSymbol_t p = NEW(CSymbol);
+    p->kind = CDEF;
+    p->rec.def = def;
+    if (!cscope_push(cs, p, nspace))
+    {
+        free(p);
+        return 0;
+    }
+    return 1;
+}
+
 void cscope_enter(CScope_t cs) {
     CSNode *np = NEW(CSNode);
     np->next = cs->top;
@@ -273,10 +290,17 @@ unsigned int bkdr_hash(const char *str) {
 const char *csymbol_print(void *csym) {
     CSymbol_t p = (CSymbol_t)csym;
     static char buff[MAX_DEBUG_PRINT_BUFF];
-    if (p->kind == CVAR)
-        sprintf(buff, "%s@%lx", p->rec.var->name, (size_t)p->rec.var);
-    else
-        sprintf(buff, "%s@%lx", p->rec.type->name, (size_t)p->rec.type);
+    switch (p->kind)
+    {
+        case CVAR:
+            sprintf(buff, "%s@%lx", p->rec.var->name, (size_t)p->rec.var);
+            break;
+        case CTYPE:
+            sprintf(buff, "%s@%lx", p->rec.type->name, (size_t)p->rec.type);
+            break;
+        case CDEF:
+            sprintf(buff, "%s@%lx", p->rec.def->name, (size_t)p->rec.def);
+    }
     return buff;
 }
 
@@ -314,6 +338,11 @@ void ctype_print(CType_t);
 void cvar_print(CVar_t cv) {
     fprintf(stderr, "[var@%lx:%s]->", (size_t)cv, cv->name);
     ctype_print(cv->type);
+}
+
+void cdef_print(CDef_t cd) {
+    fprintf(stderr, "[def@%lx:%s]->", (size_t)cd, cd->name);
+    ctype_print(cd->type);
 }
 
 void ctype_print(CType_t ct) {
@@ -507,6 +536,14 @@ CType_t semantics_type_spec(CNode *p, CScope_t scope) {
 
                 if (id->type != NOP)
                     type = struct_type_merge(type, scope);
+            }
+            break;
+        case USER_TYPE:
+            {
+                CHECK_TYPE(p->chd, ID);
+                CSymbol_t lu = cscope_lookup(scope, p->chd->rec.strval, NS_ID);
+                assert(lu && lu->kind == CDEF); /* parser guarantees this */
+                type = lu->rec.def->type;
             }
             break;
         default: assert(0);
@@ -724,8 +761,25 @@ void semantics_initr(CNode *p, CScope_t scope, CType_t type) {
     }
 }
 
+void semantics_typedef(CNode *p, CType_t type, CScope_t scope) {
+    CNode *declr = p->chd->next;
+    for (p = declr->chd; p; p = p->next)
+    {
+        CVar_t var = semantics_declr(p, type, scope, 0);
+        CDef_t def = cdef_create(var->name, var->type, var->ast);
+        if (!cscope_push_def(scope, def, NS_ID))
+        {
+            CSymbol_t lu = cscope_lookup(scope, def->name, NS_ID);
+            if (lu->kind != CDEF)
+                ERROR((def->ast, "'%s' redeclared as different kind of symbol", def->name));
+            /* FIXME: `typedef int a()` is different from typedef `int a(int)` */
+            if (!is_same_type(lu->rec.type, def->type))
+                ERROR((def->ast, "conflicting types of '%s'", def->name));
+        }
+    }
+}
+
 CVar_t semantics_decl(CNode *p, CScope_t scope) {
-    CHECK_TYPE(p, DECL);
     CNode *declr = p->chd->next;
     CType_t type = semantics_type_spec(p->chd, scope);
     CVar_t res = NULL;
@@ -736,6 +790,12 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         cscope_push_type(scope, type, NS_TAG);
         useful = 1;
     }
+    if (p->type == TYPEDEF)
+    {
+        semantics_typedef(p, type, scope);
+        return NULL;
+    }
+    CHECK_TYPE(p, DECL);
     if (declr->chd->type != NOP)
     {
         CNode *p;
@@ -746,18 +806,19 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             if (var->type->type == CFUNC)
             {
                 CType_t func = var->type;
+                CSymbol_t lu;
                 func->name = var->name;
+                if (initr->type == INITR)
+                    ERROR((var->ast, "function '%s' is initialized like a variable", func->name));
                 if (!cscope_push_type(scope, func, NS_ID))
                 {
-                    CSymbol_t lu = cscope_lookup(scope, func->name, NS_ID);
+                    lu = cscope_lookup(scope, func->name, NS_ID);
                     if (lu->kind != CTYPE)
                         ERROR((func->ast, "'%s' redeclared as different kind of symbol", func->name));
                     if (!is_same_type(lu->rec.type, func))
                         ERROR((func->ast, "conflicting types of '%s'", func->name));
                     type_merge(lu->rec.type, func);
                 }
-                if (initr->type == INITR)
-                    ERROR((var->ast, "function '%s' is initialized like a variable", func->name));
             }
             else
             {
@@ -1542,7 +1603,7 @@ void semantics_check(CNode *p) {
         {
             case FUNC_DEF: 
                 semantics_func(p, scope); break;
-            case DECL: 
+            case DECL: case TYPEDEF:
                 semantics_decl(p, scope); break;
             default: assert(0);
         }
@@ -1555,22 +1616,71 @@ void semantics_check(CNode *p) {
             for (p = scope->ids->head[i]; p; p = p->next)
             {
                 CSymbol_t tp = (CSymbol_t)(p->val);
-                if (tp->kind == CVAR)
-                    cvar_print(tp->rec.var);
-                else
-                    ctype_print(tp->rec.type);
+                switch (tp->kind)
+                {
+                    case CVAR: cvar_print(tp->rec.var); break;
+                    case CTYPE: ctype_print(tp->rec.type); break;
+                    case CDEF: cdef_print(tp->rec.def); break;
+                }
                 fprintf(stderr, "\n");
             }
         for (i = 0; i < MAX_TABLE_SIZE; i++)
             for (p = scope->tags->head[i]; p; p = p->next)
             {
                 CSymbol_t tp = (CSymbol_t)(p->val);
-                if (tp->kind == CVAR)
-                    cvar_print(tp->rec.var);
-                else
-                    ctype_print(tp->rec.type);
+                switch (tp->kind)
+                {
+                    case CVAR: cvar_print(tp->rec.var); break;
+                    case CTYPE: ctype_print(tp->rec.type); break;
+                    case CDEF: cdef_print(tp->rec.def); break;
+                }
                 fprintf(stderr, "\n");
             }
     }
     cnode_debug_print(ast_root, 1);
 }
+
+static CScope_t typedef_scope;
+static enum {
+    NONE,
+    TYPEDEF_DECLR,
+    OTHER_DECLR
+} typedef_state;
+
+void cibic_init() {
+    typedef_scope = cscope_create();
+    typedef_state = NONE;
+}
+
+int is_identifier(const char *name) {
+    CSymbol_t lu;
+    /* the parser is reading declarators */
+    if (typedef_state == OTHER_DECLR) return 1;
+    /* the parser is reading typedef */
+    if (typedef_state == TYPEDEF_DECLR) return 1;
+    /* no info about name, assume it to be an id by default */
+    lu = cscope_lookup(typedef_scope, name, NS_ID);
+    if (!lu) return 1;
+    return lu->kind == CVAR;
+}
+
+void push(const char *name) {
+    if (typedef_state == TYPEDEF_DECLR)
+        cscope_push_type(typedef_scope, ctype_create(name, 0, NULL), NS_ID);
+    else
+        cscope_push_var(typedef_scope, cvar_create(name, NULL, NULL), NS_ID);
+}
+
+CDef_t cdef_create(const char *name, CType_t type, CNode *ast) {
+    CDef_t cd = NEW(CDef);
+    cd->name = name;
+    cd->type = type;
+    cd->ast = ast;
+    return cd;
+}
+
+void enter_block() { cscope_enter(typedef_scope); }
+void exit_block() { cscope_exit(typedef_scope); }
+void enter_typedef() { typedef_state = TYPEDEF_DECLR; }
+void enter_declr() { typedef_state = OTHER_DECLR; }
+void exit_declr() { typedef_state = NONE; }

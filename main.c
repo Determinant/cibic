@@ -39,11 +39,13 @@ void print_ast() {
         fprintf(stderr, "AST for file: \"%s\"\n", fname);
     else
         fprintf(stderr, "AST for stdin\n");
+    cibic_init();
     yyparse();
     cnode_debug_print(ast_root, 1);
 }
 
 void print_sem() {
+    cibic_init();
     yyparse();
     semantics_check(ast_root);
 /*    cnode_debug_print(ast_root, 1); */
