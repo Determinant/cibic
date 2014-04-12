@@ -48,9 +48,9 @@ static char err_buff[MAX_ERROR_BUFF];
 static CType_t basic_type_int; 
 static CType_t basic_type_char;
 static CType_t basic_type_void;
-static CVar_t builtin_printf;
-static CVar_t builtin_scanf;
-static CVar_t builtin_malloc;
+static CType_t builtin_printf;
+static CType_t builtin_scanf;
+static CType_t builtin_malloc;
 
 static void error_print(CNode *ast, const char *fmt, ...) {
     va_list args;
@@ -730,14 +730,28 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
         {
             CNode *initr = p->chd->next;
             CVar_t var = semantics_declr(p->chd, type, scope, 0);
-            if (scope->lvl && !type_is_complete(var->type))
-                ERROR((var->ast, "storage size of '%s' isn’t known", var->name));
-            var = var_merge(var, scope);
-            var->next = res;
-            res = var;
-            /* check initializer */
-            if (initr->type == INITR)
-                semantics_initr(initr, scope, var->type);
+            if (var->type->type == CFUNC)
+            {
+                CType_t func = var->type;
+                func->name = var->name;
+                if (!cscope_push(scope, type2sym(func), NS_ID))
+                    type_merge(
+                            cscope_lookup(scope, func->name, NS_ID)->rec.type,
+                            func);
+                if (initr->type == INITR)
+                    ERROR((var->ast, "function '%s' is initialized like a variable", func->name));
+            }
+            else
+            {
+                if (scope->lvl && !type_is_complete(var->type))
+                    ERROR((var->ast, "storage size of '%s' isn’t known", var->name));
+                var = var_merge(var, scope);
+                var->next = res;
+                res = var;
+                /* check initializer */
+                if (initr->type == INITR)
+                    semantics_initr(initr, scope, var->type);
+            }
         }
         useful = 1;
     }
@@ -1123,11 +1137,20 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             {
                 CSymbol_t lu = cscope_lookup(scope, p->rec.strval, NS_ID);
                 if (!lu) ERROR((p, "'%s' undeclared", p->rec.strval));
-                p->ext.var = lu->rec.var;
-                res.type = p->ext.var->type;
-                res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
+                if (lu->kind == CVAR)
+                {
+                    p->ext.var = lu->rec.var;
+                    res.type = p->ext.var->type;
+                    res.lval = res.type->type != CARR;
+                }
+                else
+                {
+                    p->ext.type = lu->rec.type;
+                    res.type = p->ext.type;
+                    res.lval = res.type->type == CFUNC;
+                    FUNC_POINTER_CONV(res.type);
+                }
                 p->ext.is_const = 0;
-                FUNC_POINTER_CONV(res.type);
             }
             break;
         case INT:
@@ -1410,13 +1433,12 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
     return res;
 }
 
-CVar_t semantics_func(CNode *p, CScope_t scope) {
+CType_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
     CVar_t head = semantics_declr(p->chd->next,
                                 semantics_type_spec(p->chd, scope),
                                 scope, 0);
-    CType_t func = head->type, funco;
-    CVar_t res = cvar_create(head->name, func, p), old = NULL;
+    CType_t func = head->type, efunc;
     CType_t rt = func->rec.func.ret;
 
     if (rt->type != CVOID && !type_is_complete(rt))
@@ -1424,6 +1446,8 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
 
     scope->func = func;
     func->rec.func.body = p->chd->next->next;
+    func->name = head->name;
+    free(head);
     cscope_enter(scope);                /* enter function local scope */
     {   /* Note: here is a dirty hack to forcibly push function definition to
            the global scope, while all the types specified in parameters retain in local scope.
@@ -1433,22 +1457,21 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         scope->top = ntop->next;
         scope->lvl--;
 
-        if (cscope_push(scope, var2sym(res), NS_ID))
-            old = res;
-        if (!old)
+        if (!cscope_push(scope, type2sym(func), NS_ID))
         {
-            old = cscope_lookup(scope, res->name, NS_ID)->rec.var;
-            funco = old->type;
-            if (funco->type != CFUNC)
-                ERROR((res->ast, "conflicting types of '%s'", res->name));
-            else if (funco->rec.func.body)
-                ERROR((res->ast, "redefintion of function '%s'", res->name));
-            else if (!is_same_type(funco, res->type))
-                ERROR((res->ast, "function defintion does not match the prototype"));
-            type_merge(old->type, res->type);
-            free(res);
+            CSymbol_t lu = cscope_lookup(scope, func->name, NS_ID);
+            if (lu->kind != CTYPE)
+                ERROR((func->ast, "'%s' redeclared as different kind of symbol", func->name));
+            efunc = lu->rec.type;
+            if (efunc->type != CFUNC)
+                ERROR((func->ast, "conflicting types of '%s'", func->name));
+            else if (efunc->rec.func.body)
+                ERROR((func->ast, "redefintion of function '%s'", func->name));
+            else if (!is_same_type(efunc, func))
+                ERROR((func->ast, "function defintion does not match the prototype"));
+            type_merge(efunc, func);
+            free(func);
         }
-        free(head);
 
         scope->top = ntop;
         scope->lvl++;
@@ -1463,17 +1486,16 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
     func->rec.func.local = semantics_comp(p->chd->next->next, scope);   /* check comp */
     cscope_exit(scope);                                        /* exit from local scope */
 
-    return old;
+    return func;
 }
 
-CVar_t make_builtin_func(const char *name, CType_t rt) {
+CType_t make_builtin_func(const char *name, CType_t rt) {
     CType_t func = ctype_create(name, CFUNC, NULL);
-    CVar_t res = cvar_create(name, func, NULL);
     func->rec.func.params = NULL;
     func->rec.func.body = NULL;
     func->rec.func.local = NULL;
     func->rec.func.ret = rt;
-    return res;
+    return func;
 }
 
 void semantics_check(CNode *p) {
@@ -1492,9 +1514,9 @@ void semantics_check(CNode *p) {
     cscope_push(scope, type2sym(basic_type_int), NS_TAG);
     cscope_push(scope, type2sym(basic_type_char), NS_TAG);
     cscope_push(scope, type2sym(basic_type_void), NS_TAG);
-    cscope_push(scope, var2sym(builtin_printf), NS_ID);
-    cscope_push(scope, var2sym(builtin_scanf), NS_ID);
-    cscope_push(scope, var2sym(builtin_malloc), NS_ID);
+    cscope_push(scope, type2sym(builtin_printf), NS_ID);
+    cscope_push(scope, type2sym(builtin_scanf), NS_ID);
+    cscope_push(scope, type2sym(builtin_malloc), NS_ID);
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {
