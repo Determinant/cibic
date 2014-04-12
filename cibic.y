@@ -42,6 +42,7 @@ declaration
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
                             cnode_list_wrap(INIT_DECLRS, cnode_create_nop())), @$);
+        exit_declr();
     }
     | type_specifier init_declarators  ';' {
         $$ = cnode_add_loc(cnode_create_decl(
@@ -53,6 +54,7 @@ declaration
 function_definition
     : type_specifier declarator compound_statement {
         $$ = cnode_add_loc(cnode_create_func($1, $2, $3), @$);
+        exit_declr();
     }
 
 parameters
@@ -115,8 +117,8 @@ struct_field
     }
 
 struct_or_union
-    : KW_STRUCT { $$ = KW_STRUCT; }
-    | KW_UNION { $$ = KW_UNION; }
+    : KW_STRUCT { $$ = KW_STRUCT; enter_struct(); }
+    | KW_UNION { $$ = KW_UNION; enter_struct(); }
 
 plain_declaration
     : type_specifier declarator {

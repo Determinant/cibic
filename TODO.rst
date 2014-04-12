@@ -17,10 +17,10 @@ TODO
     - pointer may **allow incomplete** type (done)
   - calculate type memory footprint at proper time
   - function to 'pointer to function' conversion (according the std 6.3.2/4) (done)
-  - vague var table management
+  - vague var table management (done)
 
 - Not Implemented:
 
   - complex type name (to be in agreement with complex decl) (almost done, need more tests)
-  - initializer checking
-  - typedef support (via adding mid-rule actions to bision to inform flex)
+  - initializer checking (done)
+  - typedef support (via adding mid-rule actions to bision to inform flex) (done)

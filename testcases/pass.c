@@ -124,6 +124,15 @@ int typedef2() {
     }
 }
 
+typedef struct TA {
+    int x;
+} TA;
+typedef struct TA TA;
+int typedef_struct() {
+    TA a;
+    a.x = 1;
+}
+
 int main() {
     n.x = 1;
     n.y = 2;

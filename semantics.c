@@ -773,7 +773,7 @@ void semantics_typedef(CNode *p, CType_t type, CScope_t scope) {
             if (lu->kind != CDEF)
                 ERROR((def->ast, "'%s' redeclared as different kind of symbol", def->name));
             /* FIXME: `typedef int a()` is different from typedef `int a(int)` */
-            if (!is_same_type(lu->rec.type, def->type))
+            if (!is_same_type(lu->rec.def->type, def->type))
                 ERROR((def->ast, "conflicting types of '%s'", def->name));
         }
     }
@@ -1644,7 +1644,8 @@ static CScope_t typedef_scope;
 static enum {
     NONE,
     TYPEDEF_DECLR,
-    OTHER_DECLR
+    OTHER_DECLR,
+    STRUCT_TAG
 } typedef_state;
 
 void cibic_init() {
@@ -1654,6 +1655,8 @@ void cibic_init() {
 
 int is_identifier(const char *name) {
     CSymbol_t lu;
+    /* struct tag */
+    if (typedef_state == STRUCT_TAG) return 1;
     /* the parser is reading declarators */
     if (typedef_state == OTHER_DECLR) return 1;
     /* the parser is reading typedef */
@@ -1683,4 +1686,5 @@ void enter_block() { cscope_enter(typedef_scope); }
 void exit_block() { cscope_exit(typedef_scope); }
 void enter_typedef() { typedef_state = TYPEDEF_DECLR; }
 void enter_declr() { typedef_state = OTHER_DECLR; }
+void enter_struct() { typedef_state = STRUCT_TAG; }
 void exit_declr() { typedef_state = NONE; }
