@@ -68,6 +68,25 @@ static void warning_print(CNode *ast, const char *fmt, ...) {
     va_end(args);
 }
 
+const char *csymbol_getname(CSymbol_t sym) {
+    return (sym->kind == CVAR) ? 
+            sym->rec.var->name : sym->rec.type->name;
+}
+
+CSymbol_t type2sym(CType_t type) {
+    CSymbol_t p = NEW(CSymbol);
+    p->kind = CTYPE;
+    p->rec.type = type;
+    return p;
+}
+
+CSymbol_t var2sym(CVar_t var) {
+    CSymbol_t p = NEW(CSymbol);
+    p->kind = CVAR;
+    p->rec.var = var;
+    return p;
+}
+
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
     CTable_t ct = NEW(CTable);
@@ -140,41 +159,27 @@ CScope_t cscope_create() {
     p->func = NULL;
     p->inside_loop = 0;
 #ifdef CIBIC_DEBUG
-    p->tvar = ctable_create(bkdr_hash, ctable_cvar_print);
-    p->ttype = ctable_create(bkdr_hash, ctable_ctype_print);
+    p->ids = ctable_create(bkdr_hash, csymbol_print);
+    p->tags = ctable_create(bkdr_hash, csymbol_print);
 #else
-    p->tvar = ctable_create(bkdr_hash);
-    p->ttype = ctable_create(bkdr_hash);
+    p->ids = ctable_create(bkdr_hash);
+    p->tags = ctable_create(bkdr_hash);
 #endif
     cscope_enter(p);
     return p;
 }
 
-int cscope_push_var(CScope_t cs, CVar_t var) {
+int cscope_push(CScope_t cs, CSymbol_t sym, int nspace) {
+    CTable_t ct = nspace == NS_ID ? cs->ids: cs->tags;
 #ifdef CIBIC_DEBUG
     assert(cs->top);
 #endif
-    if (ctable_insert(cs->tvar, var->name, var, cs->lvl))
+    if (ctable_insert(ct, csymbol_getname(sym), sym, cs->lvl))
     {
-        CSVar *csvar = NEW(CSVar);
-        csvar->var = var;
-        csvar->next = cs->top->vhead;
-        cs->top->vhead = csvar;
-        return 1;
-    }
-    else return 0; /* naming conflict */
-}
-
-int cscope_push_type(CScope_t cs, CType_t type) {
-#ifdef CIBIC_DEBUG
-    assert(cs->top);
-#endif
-    if (ctable_insert(cs->ttype, type->name, type, cs->lvl))
-    {
-        CSType *cstype = NEW(CSType);
-        cstype->type = type;
-        cstype->next = cs->top->thead;
-        cs->top->thead = cstype;
+        CSElem *e = NEW(CSElem);
+        e->sym = sym;
+        e->next = cs->top->symlist;
+        cs->top->symlist = e;
         return 1;
     }
     else return 0; /* naming conflict */
@@ -183,22 +188,22 @@ int cscope_push_type(CScope_t cs, CType_t type) {
 void cscope_enter(CScope_t cs) {
     CSNode *np = NEW(CSNode);
     np->next = cs->top;
-    np->vhead = NULL;
-    np->thead = NULL;
+    np->symlist = NULL;
     cs->top = np;
     cs->lvl++;
 }
 
 void cscope_exit(CScope_t cs) {
     CSNode *top_o = cs->top;
-    CSVar *vp;
-    CSType *tp;
+    CSElem *p;
     cs->lvl--;
     cs->top = top_o->next;
-    for (vp = top_o->vhead; vp; vp = vp->next)
-        ctable_clip(cs->tvar, vp->var->name, cs->lvl);
-    for (tp = top_o->thead; tp; tp = tp->next)
-        ctable_clip(cs->ttype, tp->type->name, cs->lvl);
+    for (p = top_o->symlist; p; p = p->next)
+    {
+        const char *name = csymbol_getname(p->sym);
+        ctable_clip(cs->ids, name, cs->lvl);
+        ctable_clip(cs->tags, name, cs->lvl);
+    }
     free(top_o);
 }
 
@@ -220,33 +225,28 @@ void ctable_debug_print(CTable_t ct) {
 void cscope_debug_print(CScope_t cs) {
     int lvl = cs->lvl;
     CSNode *p;
+    CSElem *tp;
     fprintf(stderr, "\n****** CScope ******\n");
     for (p = cs->top; p; p = p->next)
     {
-        CSVar *vp;
-        CSType *tp;
         fprintf(stderr, "Level %d:\n", lvl--);
-        fprintf(stderr, "Vars: ");
-        for (vp = p->vhead; vp; vp = vp->next)
-            fprintf(stderr, "%s ", vp->var->name);
-        fprintf(stderr, "\nTypes: ");
-        for (tp = p->thead; tp; tp = tp->next)
-            fprintf(stderr, "%s ", tp->type->name);
+        for (tp = p->symlist; tp; tp = tp->next)
+            fprintf(stderr, "%s ", csymbol_print(tp->sym));
         fprintf(stderr, "\n\n");
     }
-    fprintf(stderr, "Var Table:\n");
-    ctable_debug_print(cs->tvar);
-    fprintf(stderr, "Type Table:\n");
-    ctable_debug_print(cs->ttype);
+    fprintf(stderr, "IDs:\n");
+    ctable_debug_print(cs->ids);
+    fprintf(stderr, "Tags:\n");
+    ctable_debug_print(cs->tags);
     fprintf(stderr, "****** CScope ******\n\n");
 }
 
-CVar_t cscope_lookup_var(CScope_t cs, const char *name) {
-    return ctable_lookup(cs->tvar, name);
-}
-
-CType_t cscope_lookup_type(CScope_t cs, const char *name) {
-    return ctable_lookup(cs->ttype, name);
+CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace) {
+    if (nspace == NS_ID)
+        return ctable_lookup(cs->ids, name);
+    else
+        return ctable_lookup(cs->tags, name);
+    return NULL;
 }
 
 unsigned int bkdr_hash(const char *str) {
@@ -257,17 +257,22 @@ unsigned int bkdr_hash(const char *str) {
     return hv;
 }
 
+const char *csymbol_print(void *csym) {
+    CSymbol_t p = (CSymbol_t)csym;
+    static char buff[MAX_DEBUG_PRINT_BUFF];
+    if (p->kind == CVAR)
+        sprintf(buff, "%s@%lx", p->rec.var->name, (size_t)p->rec.var);
+    else
+        sprintf(buff, "%s@%lx", p->rec.type->name, (size_t)p->rec.type);
+    return buff;
+}
+
 const char *ctable_cvar_print(void *var) {
     static char buff[MAX_DEBUG_PRINT_BUFF];
     sprintf(buff, "%s@%lx", ((CVar_t )var)->name, (size_t)var);
     return buff;
 }
 
-const char *ctable_ctype_print(void *type) {
-    static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s@%lx", ((CType_t )type)->name, (size_t)type);
-    return buff;
-}
 
 CVar_t cvar_create(const char *name, CType_t type, CNode *ast) {
     CVar_t cv = NEW(CVar);
@@ -366,19 +371,21 @@ void ctype_print(CType_t ct) {
 
 static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     /* Note: we shall try to lookup first instead of pushing !! */
-    CType_t old = cscope_lookup_type(scope, new->name);
-    if (!old) /* create it if it does not exist */
+    CSymbol_t lu = cscope_lookup(scope, new->name, NS_TAG);
+    CType_t old;
+    if (!lu) /* create it if it does not exist */
     {
-        cscope_push_type(scope, new);
+        cscope_push(scope, type2sym(new), NS_TAG);
         return new;
     } /* otherwise we have it */
+    old = lu->rec.type;
     if (old->type != new->type) /* not a struct or union */
         ERROR((new->ast, "conflicting types of '%s'", new->name));
     /* otherwise it is a struct or union */
     if (!new->rec.fields) /* use the old definition */
         return old;
     /* otherwise there's a completion definition */
-    if (cscope_push_type(scope, new)) /* try to push the defintion */
+    if (cscope_push(scope, type2sym(new), NS_TAG)) /* try to push the defintion */
         return new;
     /* conflict appears */
     if (old->rec.fields) /* if the old one is complete */
@@ -448,10 +455,10 @@ int is_same_type(CType_t typea, CType_t typeb) {
 
 static CVar_t var_merge(CVar_t new, CScope_t scope) {
     CVar_t old;
-    if (cscope_push_var(scope, new))
+    if (cscope_push(scope, var2sym(new), NS_ID))
         return new;
     else
-        old = cscope_lookup_var(scope, new->name);
+        old = cscope_lookup(scope, new->name, NS_ID)->rec.var;
     if (!is_same_type(old->type, new->type))
         ERROR((new->ast, "conflicting types of '%s'", new->name));
     else if (scope->lvl > 0)
@@ -713,7 +720,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
     if ((type->type == CSTRUCT || type->type == CUNION) && 
             (*type->name) != '\0')
     {
-        cscope_push_type(scope, type);
+        cscope_push(scope, type2sym(type), NS_TAG);
         useful = 1;
     }
     if (declr->chd->type != NOP)
@@ -1113,12 +1120,15 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
     switch (p->type)
     {
         case ID:
-            if (!(p->ext.var = cscope_lookup_var(scope, p->rec.strval)))
-                ERROR((p, "'%s' undeclared", p->rec.strval));
-            res.type = p->ext.var->type;
-            res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
-            p->ext.is_const = 0;
-            FUNC_POINTER_CONV(res.type);
+            {
+                CSymbol_t lu = cscope_lookup(scope, p->rec.strval, NS_ID);
+                if (!lu) ERROR((p, "'%s' undeclared", p->rec.strval));
+                p->ext.var = lu->rec.var;
+                res.type = p->ext.var->type;
+                res.lval = !(res.type->type == CARR || res.type->type == CFUNC);
+                p->ext.is_const = 0;
+                FUNC_POINTER_CONV(res.type);
+            }
             break;
         case INT:
             res.type = basic_type_int;
@@ -1423,11 +1433,11 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         scope->top = ntop->next;
         scope->lvl--;
 
-        if (cscope_push_var(scope, res))
+        if (cscope_push(scope, var2sym(res), NS_ID))
             old = res;
         if (!old)
         {
-            old = cscope_lookup_var(scope, res->name);
+            old = cscope_lookup(scope, res->name, NS_ID)->rec.var;
             funco = old->type;
             if (funco->type != CFUNC)
                 ERROR((res->ast, "conflicting types of '%s'", res->name));
@@ -1445,7 +1455,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
 
         for (var = func->rec.func.params; var; var = var->next)
         {
-            cscope_push_var(scope, var);
+            cscope_push(scope, var2sym(var), NS_ID);
             if (!type_is_complete(var->type))
                 ERROR((var->ast, "parameter '%s' has incomplete type", var->name));
         }
@@ -1479,12 +1489,12 @@ void semantics_check(CNode *p) {
         builtin_malloc = make_builtin_func("malloc", vstar);
     }
     /* add top-level basic types */
-    cscope_push_type(scope, basic_type_int);
-    cscope_push_type(scope, basic_type_char);
-    cscope_push_type(scope, basic_type_void);
-    cscope_push_var(scope, builtin_printf);
-    cscope_push_var(scope, builtin_scanf);
-    cscope_push_var(scope, builtin_malloc);
+    cscope_push(scope, type2sym(basic_type_int), NS_TAG);
+    cscope_push(scope, type2sym(basic_type_char), NS_TAG);
+    cscope_push(scope, type2sym(basic_type_void), NS_TAG);
+    cscope_push(scope, var2sym(builtin_printf), NS_ID);
+    cscope_push(scope, var2sym(builtin_scanf), NS_ID);
+    cscope_push(scope, var2sym(builtin_malloc), NS_ID);
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {
@@ -1502,15 +1512,23 @@ void semantics_check(CNode *p) {
         CTNode *p;
         int i;
         for (i = 0; i < MAX_TABLE_SIZE; i++)
-            for (p = scope->tvar->head[i]; p; p = p->next)
+            for (p = scope->ids->head[i]; p; p = p->next)
             {
-                cvar_print((CVar_t)p->val);
+                CSymbol_t tp = (CSymbol_t)(p->val);
+                if (tp->kind == CVAR)
+                    cvar_print(tp->rec.var);
+                else
+                    ctype_print(tp->rec.type);
                 fprintf(stderr, "\n");
             }
         for (i = 0; i < MAX_TABLE_SIZE; i++)
-            for (p = scope->ttype->head[i]; p; p = p->next)
+            for (p = scope->tags->head[i]; p; p = p->next)
             {
-                ctype_print((CType_t)p->val);
+                CSymbol_t tp = (CSymbol_t)(p->val);
+                if (tp->kind == CVAR)
+                    cvar_print(tp->rec.var);
+                else
+                    ctype_print(tp->rec.type);
                 fprintf(stderr, "\n");
             }
     }

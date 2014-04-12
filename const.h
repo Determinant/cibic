@@ -18,7 +18,9 @@ enum {
     STMT_FOR,    
     STMT_CONT,   
     STMT_BREAK,  
-    STMT_RET
+    STMT_RET,
+    NS_ID,
+    NS_TAG
 };
 
 #define MAX_CHDN        1024

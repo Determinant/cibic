@@ -8,6 +8,8 @@ typedef struct CType CType;
 typedef CType *CType_t;
 typedef struct CVar CVar;
 typedef CVar *CVar_t;
+typedef struct CSymbol CSymbol;
+typedef CSymbol *CSymbol_t;
 
 struct CVar {
     const char *name;
@@ -87,22 +89,15 @@ int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
 void ctable_clip(CTable_t ct, const char *key, int max_lvl);
 void ctable_debug_print(CTable_t ct);
 
-typedef struct CSVar CSVar;
-struct CSVar {
-    CVar_t var;
-    CSVar *next;
-};
-
-typedef struct CSType CSType;
-struct CSType {
-    CType_t type;
-    CSType *next;
+typedef struct CSElem CSElem;
+struct CSElem {
+    CSymbol_t sym;
+    CSElem *next;
 };
 
 typedef struct CSNode CSNode;
 struct CSNode {
-    CSVar *vhead;
-    CSType *thead;
+    CSElem *symlist;
     CSNode *next;
 };
 
@@ -113,9 +108,9 @@ struct CScope {
     CType_t func;
     int inside_loop;
     CSNode *top; 
-    CTable_t tvar;
-    CTable_t ttype;
-    CTable_t ext_link;
+    CTable_t ids;       /* ordinary identifiers */
+    CTable_t tags;      /* union & struct tags */
+    CTable_t ext_link;  /* external linkage */
 };
 
 typedef struct ExpType {
@@ -123,18 +118,30 @@ typedef struct ExpType {
     int lval;
 } ExpType;
 
+struct CSymbol {
+    enum {
+        CTYPE,
+        CVAR
+    } kind;
+    union {
+        CType_t type;
+        CVar_t var;
+    } rec;
+};
+const char *csymbol_print(void *csym);
+CSymbol_t type2sym(CType_t type);
+CSymbol_t var2sym(CVar_t var);
+const char *csym_getname(CSymbol_t csym);
+
 CScope_t cscope_create();
-CVar_t cscope_lookup_var(CScope_t cs, const char *name);
-CType_t cscope_lookup_type(CScope_t cs, const char *name);
-int cscope_push_var(CScope_t cs, CVar_t var);
-int cscope_push_type(CScope_t cs, CType_t type);
+CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace);
+int cscope_push(CScope_t cs, CSymbol_t sym, int nspace);
 void cscope_enter(CScope_t cs);
 void cscope_exit(CScope_t cs);
 void cscope_debug_print(CScope_t cs);
 
 unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
-const char *ctable_ctype_print(void *type);
 
 void semantics_check(CNode *ast);
 #endif
