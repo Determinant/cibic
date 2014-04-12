@@ -129,13 +129,12 @@ struct CSymbol {
     } rec;
 };
 const char *csymbol_print(void *csym);
-CSymbol_t type2sym(CType_t type);
-CSymbol_t var2sym(CVar_t var);
 const char *csym_getname(CSymbol_t csym);
 
 CScope_t cscope_create();
 CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace);
-int cscope_push(CScope_t cs, CSymbol_t sym, int nspace);
+int cscope_push_var(CScope_t cs, CVar_t var, int nspace);
+int cscope_push_type(CScope_t cs, CType_t type, int nspace);
 void cscope_enter(CScope_t cs);
 void cscope_exit(CScope_t cs);
 void cscope_debug_print(CScope_t cs);

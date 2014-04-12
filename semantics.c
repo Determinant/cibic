@@ -73,20 +73,6 @@ const char *csymbol_getname(CSymbol_t sym) {
             sym->rec.var->name : sym->rec.type->name;
 }
 
-CSymbol_t type2sym(CType_t type) {
-    CSymbol_t p = NEW(CSymbol);
-    p->kind = CTYPE;
-    p->rec.type = type;
-    return p;
-}
-
-CSymbol_t var2sym(CVar_t var) {
-    CSymbol_t p = NEW(CSymbol);
-    p->kind = CVAR;
-    p->rec.var = var;
-    return p;
-}
-
 #ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
     CTable_t ct = NEW(CTable);
@@ -169,7 +155,7 @@ CScope_t cscope_create() {
     return p;
 }
 
-int cscope_push(CScope_t cs, CSymbol_t sym, int nspace) {
+static int cscope_push(CScope_t cs, CSymbol_t sym, int nspace) {
     CTable_t ct = nspace == NS_ID ? cs->ids: cs->tags;
 #ifdef CIBIC_DEBUG
     assert(cs->top);
@@ -185,6 +171,30 @@ int cscope_push(CScope_t cs, CSymbol_t sym, int nspace) {
     else return 0; /* naming conflict */
 }
 
+int cscope_push_var(CScope_t cs, CVar_t var, int nspace) {
+    CSymbol_t p = NEW(CSymbol);
+    p->kind = CVAR;
+    p->rec.var = var;
+    if (!cscope_push(cs, p, nspace))
+    {
+        free(p);
+        return 0;
+    }
+    return 1;
+}
+
+int cscope_push_type(CScope_t cs, CType_t type, int nspace) {
+    CSymbol_t p = NEW(CSymbol);
+    p->kind = CTYPE;
+    p->rec.type = type;
+    if (!cscope_push(cs, p, nspace))
+    {
+        free(p);
+        return 0;
+    }
+    return 1;
+}
+
 void cscope_enter(CScope_t cs) {
     CSNode *np = NEW(CSNode);
     np->next = cs->top;
@@ -195,14 +205,17 @@ void cscope_enter(CScope_t cs) {
 
 void cscope_exit(CScope_t cs) {
     CSNode *top_o = cs->top;
-    CSElem *p;
+    CSElem *p, *np;
     cs->lvl--;
     cs->top = top_o->next;
-    for (p = top_o->symlist; p; p = p->next)
+    for (p = top_o->symlist; p; p = np)
     {
         const char *name = csymbol_getname(p->sym);
         ctable_clip(cs->ids, name, cs->lvl);
         ctable_clip(cs->tags, name, cs->lvl);
+        np = p->next;   
+        free(p->sym);   /* free CSymbol */
+        free(p);        /* free CSElem */
     }
     free(top_o);
 }
@@ -375,7 +388,7 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     CType_t old;
     if (!lu) /* create it if it does not exist */
     {
-        cscope_push(scope, type2sym(new), NS_TAG);
+        cscope_push_type(scope, new, NS_TAG);
         return new;
     } /* otherwise we have it */
     old = lu->rec.type;
@@ -385,7 +398,7 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     if (!new->rec.fields) /* use the old definition */
         return old;
     /* otherwise there's a completion definition */
-    if (cscope_push(scope, type2sym(new), NS_TAG)) /* try to push the defintion */
+    if (cscope_push_type(scope, new, NS_TAG)) /* try to push the defintion */
         return new;
     /* conflict appears */
     if (old->rec.fields) /* if the old one is complete */
@@ -455,7 +468,7 @@ int is_same_type(CType_t typea, CType_t typeb) {
 
 static CVar_t var_merge(CVar_t new, CScope_t scope) {
     CVar_t old;
-    if (cscope_push(scope, var2sym(new), NS_ID))
+    if (cscope_push_var(scope, new, NS_ID))
         return new;
     else
         old = cscope_lookup(scope, new->name, NS_ID)->rec.var;
@@ -720,7 +733,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
     if ((type->type == CSTRUCT || type->type == CUNION) && 
             (*type->name) != '\0')
     {
-        cscope_push(scope, type2sym(type), NS_TAG);
+        cscope_push_type(scope, type, NS_TAG);
         useful = 1;
     }
     if (declr->chd->type != NOP)
@@ -734,7 +747,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
             {
                 CType_t func = var->type;
                 func->name = var->name;
-                if (!cscope_push(scope, type2sym(func), NS_ID))
+                if (!cscope_push_type(scope, func, NS_ID))
                 {
                     CSymbol_t lu = cscope_lookup(scope, func->name, NS_ID);
                     if (lu->kind != CTYPE)
@@ -1462,7 +1475,7 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
         scope->top = ntop->next;
         scope->lvl--;
 
-        if (!cscope_push(scope, type2sym(func), NS_ID))
+        if (!cscope_push_type(scope, func, NS_ID))
         {
             CSymbol_t lu = cscope_lookup(scope, func->name, NS_ID);
             if (lu->kind != CTYPE)
@@ -1483,7 +1496,7 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
 
         for (var = func->rec.func.params; var; var = var->next)
         {
-            cscope_push(scope, var2sym(var), NS_ID);
+            cscope_push_var(scope, var, NS_ID);
             if (!type_is_complete(var->type))
                 ERROR((var->ast, "parameter '%s' has incomplete type", var->name));
         }
@@ -1516,12 +1529,12 @@ void semantics_check(CNode *p) {
         builtin_malloc = make_builtin_func("malloc", vstar);
     }
     /* add top-level basic types */
-    cscope_push(scope, type2sym(basic_type_int), NS_TAG);
-    cscope_push(scope, type2sym(basic_type_char), NS_TAG);
-    cscope_push(scope, type2sym(basic_type_void), NS_TAG);
-    cscope_push(scope, type2sym(builtin_printf), NS_ID);
-    cscope_push(scope, type2sym(builtin_scanf), NS_ID);
-    cscope_push(scope, type2sym(builtin_malloc), NS_ID);
+    cscope_push_type(scope, basic_type_int, NS_TAG);
+    cscope_push_type(scope, basic_type_char, NS_TAG);
+    cscope_push_type(scope, basic_type_void, NS_TAG);
+    cscope_push_type(scope, builtin_printf, NS_ID);
+    cscope_push_type(scope, builtin_scanf, NS_ID);
+    cscope_push_type(scope, builtin_malloc, NS_ID);
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {
