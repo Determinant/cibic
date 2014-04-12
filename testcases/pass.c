@@ -106,6 +106,9 @@ void local_decl() {
 struct Node n;
 struct Node {int x, y;} n;
 /* global forward declaration is ok */
+int again;
+int again;
+
 int main() {
     n.x = 1;
     n.y = 2;

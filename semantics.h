@@ -115,6 +115,7 @@ struct CScope {
     CSNode *top; 
     CTable_t tvar;
     CTable_t ttype;
+    CTable_t ext_link;
 };
 
 typedef struct ExpType {

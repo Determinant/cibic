@@ -390,6 +390,27 @@ static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     return old;
 }
 
+static void type_merge(CType_t old, CType_t new) {
+    /* assume old and new are the same type */
+    assert(old->type == new->type);
+    switch (old->type)
+    {
+        case CINT: case CCHAR: case CPTR:
+        case CUNION: case CSTRUCT:
+            break;
+        case CFUNC:
+            if (new->rec.func.params)
+                old->rec.func.params = new->rec.func.params;
+            if (new->rec.func.body)
+            {
+                old->rec.func.local = new->rec.func.local;
+                old->rec.func.body = new->rec.func.body;
+            }
+            break;
+        default: assert(0);
+    }
+}
+
 int is_same_type(CType_t typea, CType_t typeb) {
     if (typea == typeb) return 1;
     if (typea->type != typeb->type) return 0;
@@ -405,13 +426,12 @@ int is_same_type(CType_t typea, CType_t typeb) {
             return is_same_type(typea->rec.ref, typeb->rec.ref);
         case CFUNC:
             {
-                CVar_t pa, pb;
-                if ((typea->rec.func.params || typea->rec.func.body) &&
-                        (typeb->rec.func.params || typeb->rec.func.body))
+                CVar_t pa = typea->rec.func.params,
+                       pb = typeb->rec.func.params;
+                if ((pa || typea->rec.func.body) &&
+                    (pb || typeb->rec.func.body))
                 {
-                    for (pa = typea->rec.func.params, 
-                            pb = typeb->rec.func.params; pa && pb;
-                            pa = pa->next, pb = pb->next)
+                    for (;pa && pb; pa = pa->next, pb = pb->next)
                         if (!is_same_type(pa->type, pb->type))
                             return 0;
                     if (pa || pb) 
@@ -432,8 +452,11 @@ static CVar_t var_merge(CVar_t new, CScope_t scope) {
         return new;
     else
         old = cscope_lookup_var(scope, new->name);
-    if (!is_same_type(old->type, new->type) || scope->lvl > 0)
+    if (!is_same_type(old->type, new->type))
         ERROR((new->ast, "conflicting types of '%s'", new->name));
+    else if (scope->lvl > 0)
+        ERROR((new->ast, "redeclaration of '%s' with no linkage", new->name));
+    type_merge(old->type, new->type);
     free(new);
     return old;
 }
@@ -1390,6 +1413,7 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         ERROR((func->rec.func.ret->ast, "return type is an incomplete type"));
 
     scope->func = func;
+    func->rec.func.body = p->chd->next->next;
     cscope_enter(scope);                /* enter function local scope */
     {   /* Note: here is a dirty hack to forcibly push function definition to
            the global scope, while all the types specified in parameters retain in local scope.
@@ -1398,8 +1422,24 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         CVar_t var;
         scope->top = ntop->next;
         scope->lvl--;
+
         if (cscope_push_var(scope, res))
             old = res;
+        if (!old)
+        {
+            old = cscope_lookup_var(scope, res->name);
+            funco = old->type;
+            if (funco->type != CFUNC)
+                ERROR((res->ast, "conflicting types of '%s'", res->name));
+            else if (funco->rec.func.body)
+                ERROR((res->ast, "redefintion of function '%s'", res->name));
+            else if (!is_same_type(funco, res->type))
+                ERROR((res->ast, "function defintion does not match the prototype"));
+            type_merge(old->type, res->type);
+            free(res);
+        }
+        free(head);
+
         scope->top = ntop;
         scope->lvl++;
 
@@ -1411,25 +1451,8 @@ CVar_t semantics_func(CNode *p, CScope_t scope) {
         }
     }
     func->rec.func.local = semantics_comp(p->chd->next->next, scope);   /* check comp */
-    func->rec.func.body = p->chd->next->next;
     cscope_exit(scope);                                        /* exit from local scope */
 
-    if (!old)
-    {
-        old = cscope_lookup_var(scope, res->name);
-        funco = old->type;
-        if (funco->type != CFUNC)
-            ERROR((res->ast, "conflicting types of '%s'", res->name));
-        else if (funco->rec.func.body)
-            ERROR((res->ast, "redefintion of function '%s'", res->name));
-        else if (!is_same_type(funco, res->type))
-            ERROR((res->ast, "function defintion does not match the prototype"));
-        funco->rec.func.params = res->type->rec.func.params;
-        funco->rec.func.local = res->type->rec.func.local;
-        funco->rec.func.body = res->type->rec.func.body;
-        free(res);
-    }
-    free(head);
     return old;
 }
 
