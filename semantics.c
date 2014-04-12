@@ -461,7 +461,7 @@ static CVar_t var_merge(CVar_t new, CScope_t scope) {
         old = cscope_lookup(scope, new->name, NS_ID)->rec.var;
     if (!is_same_type(old->type, new->type))
         ERROR((new->ast, "conflicting types of '%s'", new->name));
-    else if (scope->lvl > 0)
+    else if (scope->lvl)
         ERROR((new->ast, "redeclaration of '%s' with no linkage", new->name));
     type_merge(old->type, new->type);
     free(new);
@@ -735,9 +735,14 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
                 CType_t func = var->type;
                 func->name = var->name;
                 if (!cscope_push(scope, type2sym(func), NS_ID))
-                    type_merge(
-                            cscope_lookup(scope, func->name, NS_ID)->rec.type,
-                            func);
+                {
+                    CSymbol_t lu = cscope_lookup(scope, func->name, NS_ID);
+                    if (lu->kind != CTYPE)
+                        ERROR((func->ast, "'%s' redeclared as different kind of symbol", func->name));
+                    if (!is_same_type(lu->rec.type, func))
+                        ERROR((func->ast, "conflicting types of '%s'", func->name));
+                    type_merge(lu->rec.type, func);
+                }
                 if (initr->type == INITR)
                     ERROR((var->ast, "function '%s' is initialized like a variable", func->name));
             }

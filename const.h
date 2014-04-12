@@ -30,6 +30,4 @@ enum {
 #define MAX_ERROR_BUFF  1024
 #define INT_SIZE        4
 #define CHAR_SIZE       1
-#define EXT_LINKAGE     1
-#define NO_LINKAGE     0
 #endif
