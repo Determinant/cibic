@@ -155,12 +155,18 @@ unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
 
 void semantics_check(CNode *ast);
+
+enum DefState{
+    FORCE_ID,
+    IN_TYPEDEF,
+    NONE
+};
+
 int is_identifier(const char *name);
 void push(const char *name);
 void cibic_init(void);
-void enter_block(void);
-void exit_block(void);
-void force_id(void);
-void enter_typedef(void);
-void clear_state(void);
+void block_enter(void);
+void block_exit(void);
+void def_enter(enum DefState kind);
+void def_exit(void);
 #endif

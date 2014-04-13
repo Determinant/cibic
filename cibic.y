@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "ast.h"
+#include "semantics.h"
 %}
 %union {
     int intval;
@@ -32,29 +33,28 @@ prog_list
     | prog_list function_definition { $$ = cnode_list_append($1, $2); }
 
 declaration
-    : KW_TYPEDEF type_specifier { enter_typedef(); } declarators ';' {
+    : KW_TYPEDEF type_specifier { def_exit(); def_enter(IN_TYPEDEF); } declarators ';' {
         $$ = cnode_add_loc(cnode_create_typedef(
                             $2,
                             cnode_add_loc(cnode_list_wrap(DECLRS, $4), @4)), @$);
-        clear_state();
+        def_exit();
     }
     | type_specifier ';' {
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
                             cnode_list_wrap(INIT_DECLRS, cnode_create_nop())), @$);
-        clear_state();
+        def_exit();
     }
     | type_specifier init_declarators  ';' {
         $$ = cnode_add_loc(cnode_create_decl(
                             $1,
                             cnode_add_loc(cnode_list_wrap(INIT_DECLRS, $2), @2)), @$);
-        clear_state();
+        def_exit();
     }
 
 function_definition
-    : type_specifier declarator compound_statement {
-        $$ = cnode_add_loc(cnode_create_func($1, $2, $3), @$);
-        clear_state();
+    : type_specifier declarator { def_exit(); } compound_statement {
+        $$ = cnode_add_loc(cnode_create_func($1, $2, $4), @$);
     }
 
 parameters
@@ -84,22 +84,23 @@ array_initializer
         $$ = cnode_list_append(cnode_add_loc($1, @1), $3); }
 
 type_specifier
-    : KW_VOID { $$ = cnode_add_loc(cnode_create_type_spec(KW_VOID, 0), @$); force_id(); }
-    | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); force_id(); }
-    | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); force_id(); }
-    | struct_or_union identifier '{' struct_fields '}' {
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$);
-        force_id();
+    : KW_VOID { $$ = cnode_add_loc(cnode_create_type_spec(KW_VOID, 0), @$); def_enter(FORCE_ID); }
+    | KW_CHAR { $$ = cnode_add_loc(cnode_create_type_spec(KW_CHAR, 0), @$); def_enter(FORCE_ID); }
+    | KW_INT { $$ = cnode_add_loc(cnode_create_type_spec(KW_INT, 0), @$); def_enter(FORCE_ID); }
+    | struct_or_union identifier {def_exit(); }'{'  struct_fields '}' {
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_add_loc(cnode_list_wrap(FIELDS, $5), @5)), @$);
+        def_enter(FORCE_ID);
     }
-    | struct_or_union '{' struct_fields '}'            {
-        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $3), @3)), @$);
-        force_id();
+    | struct_or_union {def_exit(); }'{' struct_fields '}'            {
+        $$ = cnode_add_loc(cnode_create_type_spec($1, 2, cnode_create_nop(), cnode_add_loc(cnode_list_wrap(FIELDS, $4), @4)), @$);
+        def_enter(FORCE_ID);
     }
     | struct_or_union identifier {
         $$ = cnode_add_loc(cnode_create_type_spec($1, 2, $2, cnode_create_nop()), @$);
-        force_id();
+        def_exit();
+        def_enter(FORCE_ID);
     }
-    | user_type { $$ = cnode_add_loc(cnode_create_type_spec(USER_TYPE, 1, $1), @$); force_id(); }
+    | user_type { $$ = cnode_add_loc(cnode_create_type_spec(USER_TYPE, 1, $1), @$); def_enter(FORCE_ID); }
 
 user_type
     : USER_TYPE { $$ = cnode_add_loc(cnode_create_identifier($1), @$); }
@@ -113,26 +114,27 @@ struct_field
                 cnode_create_struct_field(
                     $1,
                     cnode_add_loc(cnode_list_wrap(DECLRS, $2), @2)), @$);
-        clear_state();
+        def_exit();
     }
 
 struct_or_union
-    : KW_STRUCT { $$ = KW_STRUCT; force_id(); }
-    | KW_UNION { $$ = KW_UNION; force_id(); }
+    : KW_STRUCT { $$ = KW_STRUCT; def_enter(FORCE_ID); }
+    | KW_UNION { $$ = KW_UNION; def_enter(FORCE_ID); }
 
 plain_declaration
     : type_specifier declarator {
         $$ = cnode_add_loc(cnode_create_plain_decl($1, $2), @$);
-        clear_state();
+        def_exit();
     }
 
 direct_declarator
     : identifier { push($1->rec.strval); }
     | '(' declarator ')' { $$ = $2; }
-    | direct_declarator '(' parameters ')' {
+    | direct_declarator { def_enter(NONE); } '(' parameters ')' {
         $$ = cnode_add_loc(cnode_create_declr(
                             DECLR_FUNC, 2, $1,
-                            cnode_add_loc(cnode_list_wrap(PARAMS, $3), @3)), @$);
+                            cnode_add_loc(cnode_list_wrap(PARAMS, $4), @4)), @$);
+        def_exit();
     }
     | direct_declarator '[' constant_expression ']' {
         $$ = cnode_add_loc(cnode_create_declr(DECLR_ARR, 2, $1, $3), @$);
@@ -155,11 +157,11 @@ expression_statement
     | expression ';'    { $$ = cnode_add_loc(cnode_create_stmt(STMT_EXP, 1, $1), @$); }
 
 compound_statement
-    : { clear_state(); enter_block(); } '{' comp_decls comp_stmts '}' {
+    : { block_enter(); } '{' comp_decls comp_stmts '}' {
         $$ = cnode_add_loc(
                 cnode_create_stmt(STMT_COMP, 2, cnode_add_loc(cnode_list_wrap(COMP_DECLS, $3), @3),
                                                 cnode_add_loc(cnode_list_wrap(COMP_STMTS, $4), @4)), @$);
-        exit_block();
+        block_exit();
     }
 
 comp_decls
@@ -314,7 +316,7 @@ cast_expression
 type_name
     : type_specifier abstract_declarator_opt {
         $$ = cnode_add_loc(cnode_create_declr(0, 2, $1, $2), @$);
-        clear_state();
+        def_exit();
     }
 
 abstract_declarator_opt

@@ -1640,33 +1640,36 @@ void semantics_check(CNode *p) {
     cnode_debug_print(ast_root, 1);
 }
 
-static CScope_t typedef_scope;
-static enum {
-    NONE,
-    FORCE_ID,
-    IN_TYPEDEF
-} typedef_state;
+typedef struct DNode DNode;
+CScope_t typedef_scope;
+struct DNode{
+    enum DefState kind;
+    DNode *next;
+} *typedef_stack;
 
 void cibic_init() {
     typedef_scope = cscope_create();
-    typedef_state = NONE;
+    typedef_stack = NULL;
 }
 
 int is_identifier(const char *name) {
     CSymbol_t lu;
-    /* struct tag */
-    /* the parser is reading declarators */
-    if (typedef_state == FORCE_ID) return 1;
-    /* the parser is reading typedef */
-    if (typedef_state == IN_TYPEDEF) return 1;
-    /* no info about name, assume it to be an id by default */
+    if (typedef_stack)
+    {
+        /* struct tag */
+        /* the parser is reading declarators */
+        if (typedef_stack->kind == FORCE_ID) return 1;
+        /* the parser is reading typedef */
+        if (typedef_stack->kind == IN_TYPEDEF) return 1;
+        /* no info about name, assume it to be an id by default */
+    }
     lu = cscope_lookup(typedef_scope, name, NS_ID);
     if (!lu) return 1;
     return lu->kind == CVAR;
 }
 
 void push(const char *name) {
-    if (typedef_state == IN_TYPEDEF)
+    if (typedef_stack && typedef_stack->kind == IN_TYPEDEF)
         cscope_push_type(typedef_scope, ctype_create(name, 0, NULL), NS_ID);
     else
         cscope_push_var(typedef_scope, cvar_create(name, NULL, NULL), NS_ID);
@@ -1680,8 +1683,18 @@ CDef_t cdef_create(const char *name, CType_t type, CNode *ast) {
     return cd;
 }
 
-void enter_block() { cscope_enter(typedef_scope); }
-void exit_block() { cscope_exit(typedef_scope); }
-void force_id() { typedef_state = FORCE_ID; }
-void enter_typedef() { typedef_state = IN_TYPEDEF; }
-void clear_state() { typedef_state = NONE; }
+void def_enter(enum DefState kind) {
+    DNode *ntop = NEW(DNode);
+    ntop->kind = kind;
+    ntop->next = typedef_stack;
+    typedef_stack = ntop;
+}
+
+void def_exit() {
+    DNode *ntop = typedef_stack->next;
+    free(typedef_stack);
+    typedef_stack = ntop;
+}
+
+void block_enter() { cscope_enter(typedef_scope); }
+void block_exit() { cscope_exit(typedef_scope); }

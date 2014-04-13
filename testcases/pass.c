@@ -87,6 +87,7 @@ int fc(int fc()) {
 }
 
 int incomp(struct I a);
+struct I { int i, j; };
 
 void (*bsd_signal(int sig, void (*func)(int a)))(int b);
 
