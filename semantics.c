@@ -341,19 +341,33 @@ CType_t ctype_create(const char *name, int type, CNode *ast) {
     return ct;
 }
 
-void ctype_print(CType_t);
-
-void cvar_print(CVar_t cv) {
-    fprintf(stderr, "[var@%lx:%s]->", (size_t)cv, cv->name);
-    ctype_print(cv->type);
+void ctype_print_(CType_t, int lvl);
+void print_tabs(int tnum) { while (tnum--) fprintf(stderr, "\t"); }
+void ctype_pre_(CType_t type, int *lvl) {
+    int t= type->type;
+    if (t == CARR || t == CFUNC || t == CUNION || t == CSTRUCT)
+    {
+        fprintf(stderr, "\n");
+        *lvl += 2;
+        print_tabs(*lvl);
+    }
 }
 
-void cdef_print(CDef_t cd) {
-    fprintf(stderr, "[def@%lx:%s]->", (size_t)cd, cd->name);
-    ctype_print(cd->type);
+void cvar_print_(CVar_t cv, int lvl) {
+    fprintf(stderr, "[var@%lx:%s :: ", (size_t)cv, cv->name);
+    ctype_pre_(cv->type, &lvl);
+    ctype_print_(cv->type, lvl);
+    fprintf(stderr, "]");
 }
 
-void ctype_print(CType_t ct) {
+void cdef_print_(CDef_t cd, int lvl) {
+    fprintf(stderr, "[def@%lx:%s :: ", (size_t)cd, cd->name);
+    ctype_pre_(cd->type, &lvl);
+    ctype_print_(cd->type, lvl);
+    fprintf(stderr, "]");
+}
+
+void ctype_print_(CType_t ct, int lvl) {
     switch (ct->type)
     {
         case CINT: 
@@ -368,56 +382,87 @@ void ctype_print(CType_t ct) {
                 CTable_t f = ct->rec.fields;
                 int i;
                 CTNode *fn; 
-                fprintf(stderr, "[%s@%lx:(name:%s|fields:",
+                lvl++;
+                fprintf(stderr, "[%s@%lx:{name:%s}",
                         ct->type == CSTRUCT ? "struct" : "union",
                         (size_t)ct,
                         ct->name);
+
+                fprintf(stderr, "{fields:");
                 if (f)
                 {
+                    fprintf(stderr, "\n");
                     int first = 1;
                     for (i = 0; i < MAX_TABLE_SIZE; i++)
                         for (fn = f->head[i]; fn; fn = fn->next)
                         {
-                            fprintf(stderr, "%s", first ? (first = 0, "") : ",");
-                            cvar_print((CVar_t)fn->val);
+                            fprintf(stderr, "%s", first ? (first = 0, "") : ",\n");
+                            print_tabs(lvl);
+                            cvar_print_((CVar_t)fn->val, lvl);
                         }
                 }
-                fprintf(stderr, ")]");
+                fprintf(stderr, "}]");
             }
             break;
         case CARR:
             {
-                fprintf(stderr, "[arr:(%d)]->", ct->rec.arr.len);
-                ctype_print(ct->rec.arr.elem);
+                CType_t type = ct->rec.arr.elem;
+                fprintf(stderr, "[arr:{len:%d}]->", ct->rec.arr.len);
+                ctype_pre_(type, &lvl);
+                ctype_print_(type, lvl);
             }
             break;
         case CPTR:
             {
+                CType_t type = ct->rec.ref;
                 fprintf(stderr, "[ptr]->");
-                ctype_print(ct->rec.ref);
+                ctype_pre_(type, &lvl);
+                ctype_print_(type, lvl);
             }
             break;
         case CFUNC:
             {
+                CType_t type = ct->rec.func.ret;
                 CVar_t p;
-                fprintf(stderr, "[func:(name:%s|params:", ct->name);
-                for (p = ct->rec.func.params; p; p = p->next)
+                lvl++;
+                fprintf(stderr, "[func:{name:%s}\n", ct->name);
+                print_tabs(lvl);
+                fprintf(stderr, "{params:");
+                if (ct->rec.func.params)
                 {
-                    cvar_print(p);
-                    if (p->next) fprintf(stderr, ",");
+                    fprintf(stderr, "\n");
+                    for (p = ct->rec.func.params; p; p = p->next)
+                    {
+                        print_tabs(lvl + 1);
+                        cvar_print_(p, lvl + 1);
+                        if (p->next) fprintf(stderr, ",\n");
+                    }
                 }
-                fprintf(stderr, "|local:");
-                for (p = ct->rec.func.local; p; p = p->next)
+                /* print_tabs(lvl); */
+                fprintf(stderr, "}\n");
+                print_tabs(lvl);
+                fprintf(stderr, "{local:");
+                if (ct->rec.func.local)
                 {
-                    cvar_print(p);
-                    if (p->next) fprintf(stderr, ",");
+                    fprintf(stderr, "\n");
+                    for (p = ct->rec.func.local; p; p = p->next)
+                    {
+                        print_tabs(lvl + 1);
+                        cvar_print_(p, lvl + 1);
+                        if (p->next) fprintf(stderr, ",\n");
+                    }
                 }
-                fprintf(stderr, ")]->");
-                ctype_print(ct->rec.func.ret);
+                fprintf(stderr, "}]->");
+                ctype_pre_(type, &lvl);
+                ctype_print_(type, lvl);
             }
             break;
     }
 }
+
+void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
+void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
+void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
 static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     /* Note: we shall try to lookup first instead of pushing !! */
@@ -1630,7 +1675,7 @@ void semantics_check(CNode *p) {
                     case CTYPE: ctype_print(tp->rec.type); break;
                     case CDEF: cdef_print(tp->rec.def); break;
                 }
-                fprintf(stderr, "\n");
+                fprintf(stderr, "\n\n");
             }
         for (i = 0; i < MAX_TABLE_SIZE; i++)
             for (p = scope->tags->head[i]; p; p = p->next)
@@ -1642,7 +1687,7 @@ void semantics_check(CNode *p) {
                     case CTYPE: ctype_print(tp->rec.type); break;
                     case CDEF: cdef_print(tp->rec.def); break;
                 }
-                fprintf(stderr, "\n");
+                fprintf(stderr, "\n\n");
             }
     }
     cnode_debug_print(ast_root, 1);
