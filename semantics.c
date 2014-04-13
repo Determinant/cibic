@@ -21,13 +21,21 @@
     } while (0)
 
 /* pointer to function conversion (std 6.3.2/4) */
-#define FUNC_POINTER_CONV(t) \
+/* also convert array to pointer */
+#define POINTER_CONV(t, p) \
     do { \
         if ((t)->type == CFUNC) \
         { \
             CType_t f = ctype_create("", CPTR, p); \
             f->rec.ref = t; \
             t = f; \
+        } \
+        else if ((t)->type == CARR) \
+        { \
+            CType_t a = ctype_create("", CPTR, p); \
+            a->rec.ref = t->rec.arr.elem; \
+            free(t); \
+            t = a; \
         } \
     } while (0)
 
@@ -596,12 +604,12 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
 #else
     CTable_t tparams = ctable_create(bkdr_hash);
 #endif
-    FUNC_POINTER_CONV(params->type);
+    POINTER_CONV(params->type, p);
     ctable_insert(tparams, params->name, params, 0);
     for (p = p->next; p; p = p->next)
     {
         CVar_t var = semantics_p_decl(p, scope);
-        FUNC_POINTER_CONV(var->type);
+        POINTER_CONV(var->type, p);
         if (scope)  /* params inside a function definition */
             if (!ctable_insert(tparams, var->name, var, 0))
                 ERROR((var->ast, "redefinition of parameter '%s'", var->name));
@@ -1227,7 +1235,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     p->ext.type = lu->rec.type;
                     res.type = p->ext.type;
                     res.lval = res.type->type == CFUNC;
-                    FUNC_POINTER_CONV(res.type);
+                    POINTER_CONV(res.type, p);
                 }
                 p->ext.is_const = 0;
             }

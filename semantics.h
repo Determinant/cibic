@@ -18,7 +18,6 @@ struct CVar {
     CVar_t next;    /* next in the linked list */
     CType_t type;
     int offset;
-    int is_const;
     CNode *ast;
 };
 
