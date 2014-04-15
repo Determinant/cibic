@@ -134,6 +134,12 @@ int typedef_struct() {
     a.x = 1;
 }
 
+struct AA {int x; int y; };
+int aa(struct AA {int a;} p) {
+    struct AA a;
+    a.a;
+}
+
 int main() {
     n.x = 1;
     n.y = 2;

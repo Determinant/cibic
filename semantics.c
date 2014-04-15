@@ -245,40 +245,6 @@ void cscope_exit(CScope_t cs) {
     free(top_o);
 }
 
-void ctable_debug_print(CTable_t ct) {
-    int i;
-    fprintf(stderr, "*** CTable ***\n");
-    for (i = 0; i < MAX_TABLE_SIZE; i++)
-        if (ct->head[i])
-        {
-            CTNode *p;
-            fprintf(stderr, "[%04d]", i);
-            for (p = ct->head[i]; p; p = p->next)
-                fprintf(stderr, "->[%s:%d]", ct->pfunc(p->val), p->lvl);
-            fprintf(stderr, "\n");
-        }
-    fprintf(stderr, "*** CTable ***\n");
-}
-
-void cscope_debug_print(CScope_t cs) {
-    int lvl = cs->lvl;
-    CSNode *p;
-    CSElem *tp;
-    fprintf(stderr, "\n****** CScope ******\n");
-    for (p = cs->top; p; p = p->next)
-    {
-        fprintf(stderr, "Level %d:\n", lvl--);
-        for (tp = p->symlist; tp; tp = tp->next)
-            fprintf(stderr, "%s ", csymbol_print(tp->sym));
-        fprintf(stderr, "\n\n");
-    }
-    fprintf(stderr, "IDs:\n");
-    ctable_debug_print(cs->ids);
-    fprintf(stderr, "Tags:\n");
-    ctable_debug_print(cs->tags);
-    fprintf(stderr, "****** CScope ******\n\n");
-}
-
 CSymbol_t cscope_lookup(CScope_t cs, const char *name, int nspace) {
     if (nspace == NS_ID)
         return ctable_lookup(cs->ids, name);
@@ -294,30 +260,6 @@ unsigned int bkdr_hash(const char *str) {
         hv = hv * seed + (unsigned)(*str++);
     return hv;
 }
-
-const char *csymbol_print(void *csym) {
-    CSymbol_t p = (CSymbol_t)csym;
-    static char buff[MAX_DEBUG_PRINT_BUFF];
-    switch (p->kind)
-    {
-        case CVAR:
-            sprintf(buff, "%s@%lx", p->rec.var->name, (size_t)p->rec.var);
-            break;
-        case CTYPE:
-            sprintf(buff, "%s@%lx", p->rec.type->name, (size_t)p->rec.type);
-            break;
-        case CDEF:
-            sprintf(buff, "%s@%lx", p->rec.def->name, (size_t)p->rec.def);
-    }
-    return buff;
-}
-
-const char *ctable_cvar_print(void *var) {
-    static char buff[MAX_DEBUG_PRINT_BUFF];
-    sprintf(buff, "%s@%lx", ((CVar_t )var)->name, (size_t)var);
-    return buff;
-}
-
 
 CVar_t cvar_create(const char *name, CType_t type, CNode *ast) {
     CVar_t cv = NEW(CVar);
@@ -340,129 +282,6 @@ CType_t ctype_create(const char *name, int type, CNode *ast) {
     }
     return ct;
 }
-
-void ctype_print_(CType_t, int lvl);
-void print_tabs(int tnum) { while (tnum--) fprintf(stderr, "\t"); }
-void ctype_pre_(CType_t type, int *lvl) {
-    int t= type->type;
-    if (t == CARR || t == CFUNC || t == CUNION || t == CSTRUCT)
-    {
-        fprintf(stderr, "\n");
-        *lvl += 2;
-        print_tabs(*lvl);
-    }
-}
-
-void cvar_print_(CVar_t cv, int lvl) {
-    fprintf(stderr, "[var@%lx:%s :: ", (size_t)cv, cv->name);
-    ctype_pre_(cv->type, &lvl);
-    ctype_print_(cv->type, lvl);
-    fprintf(stderr, "]");
-}
-
-void cdef_print_(CDef_t cd, int lvl) {
-    fprintf(stderr, "[def@%lx:%s :: ", (size_t)cd, cd->name);
-    ctype_pre_(cd->type, &lvl);
-    ctype_print_(cd->type, lvl);
-    fprintf(stderr, "]");
-}
-
-void ctype_print_(CType_t ct, int lvl) {
-    switch (ct->type)
-    {
-        case CINT: 
-            fprintf(stderr, "[int]"); break;
-        case CCHAR:
-            fprintf(stderr, "[char]"); break;
-        case CVOID:
-            fprintf(stderr, "[void]"); break;
-        case CSTRUCT:
-        case CUNION:
-            {
-                CTable_t f = ct->rec.fields;
-                int i;
-                CTNode *fn; 
-                lvl++;
-                fprintf(stderr, "[%s@%lx:{name:%s}",
-                        ct->type == CSTRUCT ? "struct" : "union",
-                        (size_t)ct,
-                        ct->name);
-
-                fprintf(stderr, "{fields:");
-                if (f)
-                {
-                    fprintf(stderr, "\n");
-                    int first = 1;
-                    for (i = 0; i < MAX_TABLE_SIZE; i++)
-                        for (fn = f->head[i]; fn; fn = fn->next)
-                        {
-                            fprintf(stderr, "%s", first ? (first = 0, "") : ",\n");
-                            print_tabs(lvl);
-                            cvar_print_((CVar_t)fn->val, lvl);
-                        }
-                }
-                fprintf(stderr, "}]");
-            }
-            break;
-        case CARR:
-            {
-                CType_t type = ct->rec.arr.elem;
-                fprintf(stderr, "[arr:{len:%d}]->", ct->rec.arr.len);
-                ctype_pre_(type, &lvl);
-                ctype_print_(type, lvl);
-            }
-            break;
-        case CPTR:
-            {
-                CType_t type = ct->rec.ref;
-                fprintf(stderr, "[ptr]->");
-                ctype_pre_(type, &lvl);
-                ctype_print_(type, lvl);
-            }
-            break;
-        case CFUNC:
-            {
-                CType_t type = ct->rec.func.ret;
-                CVar_t p;
-                lvl++;
-                fprintf(stderr, "[func:{name:%s}\n", ct->name);
-                print_tabs(lvl);
-                fprintf(stderr, "{params:");
-                if (ct->rec.func.params)
-                {
-                    fprintf(stderr, "\n");
-                    for (p = ct->rec.func.params; p; p = p->next)
-                    {
-                        print_tabs(lvl + 1);
-                        cvar_print_(p, lvl + 1);
-                        if (p->next) fprintf(stderr, ",\n");
-                    }
-                }
-                /* print_tabs(lvl); */
-                fprintf(stderr, "}\n");
-                print_tabs(lvl);
-                fprintf(stderr, "{local:");
-                if (ct->rec.func.local)
-                {
-                    fprintf(stderr, "\n");
-                    for (p = ct->rec.func.local; p; p = p->next)
-                    {
-                        print_tabs(lvl + 1);
-                        cvar_print_(p, lvl + 1);
-                        if (p->next) fprintf(stderr, ",\n");
-                    }
-                }
-                fprintf(stderr, "}]->");
-                ctype_pre_(type, &lvl);
-                ctype_print_(type, lvl);
-            }
-            break;
-    }
-}
-
-void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
-void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
-void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
 static CType_t struct_type_merge(CType_t new, CScope_t scope) {
     /* Note: we shall try to lookup first instead of pushing !! */
@@ -667,11 +486,11 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
 }
 
 ExpType semantics_exp(CNode *, CScope_t);
-CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk) {
+CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int flag) {
     CVar_t type;
     if (p->type == ID) 
     {
-        if (!func_chk) CHECK_CVOID(p->rec.strval, p);
+        if (!(flag & FLAG_FUNC_CHK)) CHECK_CVOID(p->rec.strval, p);
         return cvar_create(p->rec.strval, type_spec, p);
     }
     if (p->type == NOP) /* type name */
@@ -681,14 +500,19 @@ CVar_t semantics_declr(CNode *p, CType_t type_spec, CScope_t scope, int func_chk
         case DECLR_FUNC: 
             {
                 CType_t func = ctype_create("", CFUNC, p); /* function declr */
-                cscope_enter(scope);
-                func->rec.func.params = semantics_params(p->chd->next, scope);
-                cscope_exit(scope);
+                if (flag & FLAG_FUNC_DEF)                        /* function def */
+                    func->rec.func.params = semantics_params(p->chd->next, scope);
+                else /* function declaration */
+                {
+                    cscope_enter(scope);
+                    func->rec.func.params = semantics_params(p->chd->next, scope);
+                    cscope_exit(scope);
+                }
                 /* incomplete type */
                 func->rec.func.local = NULL;
                 func->rec.func.ret = type_spec;     /* might be an incomplete type */
                 func->rec.func.body = NULL;         /* not a definition */
-                type = semantics_declr(p->chd, func, scope, 1);
+                type = semantics_declr(p->chd, func, scope, flag | FLAG_FUNC_CHK);
                 if (type_spec->type == CARR)
                     ERROR((p, "'%s' declared as function returning an array", type->name));
                 if (type_spec->type == CFUNC)
@@ -1567,20 +1391,21 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 
 CType_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
-    CVar_t head = semantics_declr(p->chd->next,
+    CVar_t head;
+    CType_t func, efunc, rt;
+    cscope_enter(scope);                /* enter function local scope */
+    head = semantics_declr(p->chd->next,
                                 semantics_type_spec(p->chd, scope),
-                                scope, 0);
-    CType_t func = head->type, efunc;
-    CType_t rt = func->rec.func.ret;
-
+                                scope, FLAG_FUNC_DEF);
+    func = head->type;
+    rt = func->rec.func.ret;
     if (rt->type != CVOID && !type_is_complete(rt))
         ERROR((func->rec.func.ret->ast, "return type is an incomplete type"));
 
-    scope->func = func;
     func->rec.func.body = p->chd->next->next;
     func->name = head->name;
+    scope->func = func;
     free(head);
-    cscope_enter(scope);                /* enter function local scope */
     {   /* Note: here is a dirty hack to forcibly push function definition to
            the global scope, while all the types specified in parameters retain in local scope.
            The key point is to make sure semantics_params does not push any var */
@@ -1629,6 +1454,244 @@ CType_t make_builtin_func(const char *name, CType_t rt) {
     func->rec.func.ret = rt;
     return func;
 }
+
+typedef struct DNode DNode;
+CScope_t typedef_scope;
+struct DNode{
+    enum DefState kind;
+    DNode *next;
+} *typedef_stack;
+
+void cibic_init() {
+    typedef_scope = cscope_create();
+    typedef_stack = NULL;
+}
+
+int is_identifier(const char *name) {
+    CSymbol_t lu;
+    if (typedef_stack)
+    {
+        /* struct tag */
+        /* the parser is reading declarators */
+        if (typedef_stack->kind == FORCE_ID) return 1;
+        /* the parser is reading typedef */
+        if (typedef_stack->kind == IN_TYPEDEF) return 1;
+        /* no info about name, assume it to be an id by default */
+    }
+    lu = cscope_lookup(typedef_scope, name, NS_ID);
+    if (!lu) return 1;
+    return lu->kind == CVAR;
+}
+
+void push(const char *name) {
+    if (typedef_stack && typedef_stack->kind == IN_TYPEDEF)
+        cscope_push_type(typedef_scope, ctype_create(name, 0, NULL), NS_ID);
+    else
+        cscope_push_var(typedef_scope, cvar_create(name, NULL, NULL), NS_ID);
+}
+
+CDef_t cdef_create(const char *name, CType_t type, CNode *ast) {
+    CDef_t cd = NEW(CDef);
+    cd->name = name;
+    cd->type = type;
+    cd->ast = ast;
+    return cd;
+}
+
+void def_enter(enum DefState kind) {
+    DNode *ntop = NEW(DNode);
+    ntop->kind = kind;
+    ntop->next = typedef_stack;
+    typedef_stack = ntop;
+}
+
+void def_exit() {
+    DNode *ntop = typedef_stack->next;
+    free(typedef_stack);
+    typedef_stack = ntop;
+}
+
+void block_enter() { cscope_enter(typedef_scope); }
+void block_exit() { cscope_exit(typedef_scope); }
+
+void ctable_debug_print(CTable_t ct) {
+    int i;
+    fprintf(stderr, "*** CTable ***\n");
+    for (i = 0; i < MAX_TABLE_SIZE; i++)
+        if (ct->head[i])
+        {
+            CTNode *p;
+            fprintf(stderr, "[%04d]", i);
+            for (p = ct->head[i]; p; p = p->next)
+                fprintf(stderr, "->[%s:%d]", ct->pfunc(p->val), p->lvl);
+            fprintf(stderr, "\n");
+        }
+    fprintf(stderr, "*** CTable ***\n");
+}
+
+void cscope_debug_print(CScope_t cs) {
+    int lvl = cs->lvl;
+    CSNode *p;
+    CSElem *tp;
+    fprintf(stderr, "\n****** CScope ******\n");
+    for (p = cs->top; p; p = p->next)
+    {
+        fprintf(stderr, "Level %d:\n", lvl--);
+        for (tp = p->symlist; tp; tp = tp->next)
+            fprintf(stderr, "%s ", csymbol_print(tp->sym));
+        fprintf(stderr, "\n\n");
+    }
+    fprintf(stderr, "IDs:\n");
+    ctable_debug_print(cs->ids);
+    fprintf(stderr, "Tags:\n");
+    ctable_debug_print(cs->tags);
+    fprintf(stderr, "****** CScope ******\n\n");
+}
+
+const char *ctable_cvar_print(void *var) {
+    static char buff[MAX_DEBUG_PRINT_BUFF];
+    sprintf(buff, "%s@%lx", ((CVar_t )var)->name, (size_t)var);
+    return buff;
+}
+
+const char *csymbol_print(void *csym) {
+    CSymbol_t p = (CSymbol_t)csym;
+    static char buff[MAX_DEBUG_PRINT_BUFF];
+    switch (p->kind)
+    {
+        case CVAR:
+            sprintf(buff, "%s@%lx", p->rec.var->name, (size_t)p->rec.var);
+            break;
+        case CTYPE:
+            sprintf(buff, "%s@%lx", p->rec.type->name, (size_t)p->rec.type);
+            break;
+        case CDEF:
+            sprintf(buff, "%s@%lx", p->rec.def->name, (size_t)p->rec.def);
+    }
+    return buff;
+}
+
+void ctype_print_(CType_t, int lvl);
+void print_tabs(int tnum) { while (tnum--) fprintf(stderr, "    "); }
+void ctype_pre_(CType_t type, int lvl) {
+    int t= type->type;
+    if (t == CARR || t == CFUNC || t == CUNION || t == CSTRUCT)
+    {
+        fprintf(stderr, "\n");
+        print_tabs(lvl);
+    }
+}
+
+void cvar_print_(CVar_t cv, int lvl) {
+    fprintf(stderr, "[var@%lx:%s :: ", (size_t)cv, cv->name);
+    ctype_pre_(cv->type, ++lvl);
+    ctype_print_(cv->type, lvl);
+    fprintf(stderr, "]");
+}
+
+void cdef_print_(CDef_t cd, int lvl) {
+    fprintf(stderr, "[def@%lx:%s :: ", (size_t)cd, cd->name);
+    ctype_pre_(cd->type, ++lvl);
+    ctype_print_(cd->type, lvl);
+    fprintf(stderr, "]");
+}
+
+void ctype_print_(CType_t ct, int lvl) {
+    switch (ct->type)
+    {
+        case CINT: 
+            fprintf(stderr, "[int]"); break;
+        case CCHAR:
+            fprintf(stderr, "[char]"); break;
+        case CVOID:
+            fprintf(stderr, "[void]"); break;
+        case CSTRUCT:
+        case CUNION:
+            {
+                CTable_t f = ct->rec.fields;
+                int i;
+                CTNode *fn; 
+                lvl++;
+                fprintf(stderr, "[%s@%lx:{name:%s}",
+                        ct->type == CSTRUCT ? "struct" : "union",
+                        (size_t)ct,
+                        ct->name);
+
+                fprintf(stderr, "{fields:");
+                if (f)
+                {
+                    fprintf(stderr, "\n");
+                    int first = 1;
+                    for (i = 0; i < MAX_TABLE_SIZE; i++)
+                        for (fn = f->head[i]; fn; fn = fn->next)
+                        {
+                            fprintf(stderr, "%s", first ? (first = 0, "") : ",\n");
+                            print_tabs(lvl);
+                            cvar_print_((CVar_t)fn->val, lvl);
+                        }
+                }
+                fprintf(stderr, "}]");
+            }
+            break;
+        case CARR:
+            {
+                CType_t type = ct->rec.arr.elem;
+                fprintf(stderr, "[arr:{len:%d}]->", ct->rec.arr.len);
+                ctype_pre_(type, ++lvl);
+                ctype_print_(type, lvl);
+            }
+            break;
+        case CPTR:
+            {
+                CType_t type = ct->rec.ref;
+                fprintf(stderr, "[ptr]->");
+                ctype_pre_(type, ++lvl);
+                ctype_print_(type, lvl);
+            }
+            break;
+        case CFUNC:
+            {
+                CType_t type = ct->rec.func.ret;
+                CVar_t p;
+                lvl++;
+                fprintf(stderr, "[func:{name:%s}\n", ct->name);
+                print_tabs(lvl);
+                fprintf(stderr, "{params:");
+                if (ct->rec.func.params)
+                {
+                    fprintf(stderr, "\n");
+                    for (p = ct->rec.func.params; p; p = p->next)
+                    {
+                        print_tabs(lvl + 1);
+                        cvar_print_(p, lvl + 1);
+                        if (p->next) fprintf(stderr, ",\n");
+                    }
+                }
+                /* print_tabs(lvl); */
+                fprintf(stderr, "}\n");
+                print_tabs(lvl);
+                fprintf(stderr, "{local:");
+                if (ct->rec.func.local)
+                {
+                    fprintf(stderr, "\n");
+                    for (p = ct->rec.func.local; p; p = p->next)
+                    {
+                        print_tabs(lvl + 1);
+                        cvar_print_(p, lvl + 1);
+                        if (p->next) fprintf(stderr, ",\n");
+                    }
+                }
+                fprintf(stderr, "}]->");
+                ctype_pre_(type, lvl);
+                ctype_print_(type, lvl);
+            }
+            break;
+    }
+}
+
+void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
+void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
+void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
 void semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
@@ -1692,62 +1755,3 @@ void semantics_check(CNode *p) {
     }
     cnode_debug_print(ast_root, 1);
 }
-
-typedef struct DNode DNode;
-CScope_t typedef_scope;
-struct DNode{
-    enum DefState kind;
-    DNode *next;
-} *typedef_stack;
-
-void cibic_init() {
-    typedef_scope = cscope_create();
-    typedef_stack = NULL;
-}
-
-int is_identifier(const char *name) {
-    CSymbol_t lu;
-    if (typedef_stack)
-    {
-        /* struct tag */
-        /* the parser is reading declarators */
-        if (typedef_stack->kind == FORCE_ID) return 1;
-        /* the parser is reading typedef */
-        if (typedef_stack->kind == IN_TYPEDEF) return 1;
-        /* no info about name, assume it to be an id by default */
-    }
-    lu = cscope_lookup(typedef_scope, name, NS_ID);
-    if (!lu) return 1;
-    return lu->kind == CVAR;
-}
-
-void push(const char *name) {
-    if (typedef_stack && typedef_stack->kind == IN_TYPEDEF)
-        cscope_push_type(typedef_scope, ctype_create(name, 0, NULL), NS_ID);
-    else
-        cscope_push_var(typedef_scope, cvar_create(name, NULL, NULL), NS_ID);
-}
-
-CDef_t cdef_create(const char *name, CType_t type, CNode *ast) {
-    CDef_t cd = NEW(CDef);
-    cd->name = name;
-    cd->type = type;
-    cd->ast = ast;
-    return cd;
-}
-
-void def_enter(enum DefState kind) {
-    DNode *ntop = NEW(DNode);
-    ntop->kind = kind;
-    ntop->next = typedef_stack;
-    typedef_stack = ntop;
-}
-
-void def_exit() {
-    DNode *ntop = typedef_stack->next;
-    free(typedef_stack);
-    typedef_stack = ntop;
-}
-
-void block_enter() { cscope_enter(typedef_scope); }
-void block_exit() { cscope_exit(typedef_scope); }

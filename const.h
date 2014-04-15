@@ -30,4 +30,6 @@ enum {
 #define MAX_ERROR_BUFF  1024
 #define INT_SIZE        4
 #define CHAR_SIZE       1
+#define FLAG_FUNC_CHK        (1 << 0)
+#define FLAG_FUNC_DEF        (1 << 1)
 #endif
