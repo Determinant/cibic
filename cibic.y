@@ -72,7 +72,10 @@ init_declarators
 
 init_declarator
     : declarator { $$ = cnode_add_loc(cnode_create_init_declr($1, cnode_create_nop()), @$); }
-    | declarator '=' initializer { $$ = cnode_add_loc(cnode_create_init_declr($1, $3), @$); }
+    | declarator { def_exit(); } '=' initializer { 
+        $$ = cnode_add_loc(cnode_create_init_declr($1, $4), @$);
+        def_enter(FORCE_ID);
+    }
 
 initializer
     : assignment_expression { $$ = cnode_add_loc(cnode_create_initr(INITR_NORM, $1), @$); }

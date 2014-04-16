@@ -851,6 +851,10 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         n1->next = NULL;
         p->chd = n2;
     }
+    if (t1 == CPTR && calc_size(op1.type->rec.ref) == -1)
+        ERROR((p, "invalid use of undefined type"));
+    if (t2 == CPTR && calc_size(op2.type->rec.ref) == -1)
+        ERROR((p, "invalid use of undefined type"));
     if (kind == '-')
     {
         if (IS_PTR(t2) && !IS_PTR(t1))
@@ -866,15 +870,21 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         int l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
-        if (!IS_PTR(t1) && !IS_PTR(t2))
+        if (IS_PTR(t1))
+        {
+            /* TODO: constant pointer folding */
+            if (t1 == CPTR)
+                p->ext.const_val = op1.type->rec.ref->size * r;
+            else /* array */
+                p->ext.const_val = op1.type->rec.arr.elem->size * r;
+        }
+        else
+        {
             switch (kind)
             {
                 case '+': *a = l + r; break;
                 case '-': *a = l - r; break;
             }
-        else
-        {
-            /* TODO: constant pointer folding */
         }
     }
     op1.lval = 0;

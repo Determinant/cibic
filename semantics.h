@@ -61,9 +61,7 @@ CType_t ctype_create(const char *name, int type, CNode *ast);
 void ctype_debug_print(CType_t ct);
 
 typedef unsigned int (*Hashfunc_t) (const char *);
-#ifdef CIBIC_DEBUG
 typedef const char *(*Printfunc_t) (void *);
-#endif
 
 typedef struct CTNode CTNode;
 struct CTNode {
