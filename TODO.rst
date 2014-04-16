@@ -21,6 +21,6 @@ TODO
 
 - Not Implemented:
 
-  - complex type name (to be in agreement with complex decl) (almost done, need more tests)
+  - complex type name (to be in agreement with complex decl) (done)
   - initializer checking (done)
   - typedef support (via adding mid-rule actions to bision to inform flex) (done)
