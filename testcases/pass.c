@@ -141,6 +141,7 @@ int aa(struct AA {int a;} p) {
 }
 
 int main() {
+    int self = sizeof self;
     n.x = 1;
     n.y = 2;
 }

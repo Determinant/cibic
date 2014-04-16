@@ -37,7 +37,10 @@ struct CType {
     } type;
     const char *name;
     union {
-        CTable_t fields; /* for a struct or union */
+        struct {
+            CTable_t fields; /* for a struct or union */
+            CVar_t flist;
+        } st;
         CType_t ref;    /* for a pointer */
         struct {
             CType_t elem;
@@ -73,17 +76,11 @@ struct CTNode {
 typedef struct CTable {
     CTNode *head[MAX_TABLE_SIZE];
     Hashfunc_t hfunc;
-#ifdef CIBIC_DEBUG
     Printfunc_t pfunc;
-#endif
 } CTable;
 
 
-#ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc);
-#else
-CTable_t ctable_create(Hashfunc_t hfunc);
-#endif
 void ctable_destroy(CTable_t ct);
 void *ctable_lookup(CTable_t ct, const char *key);
 int ctable_insert(CTable_t ct, const char *key, void *val, int lvl);
