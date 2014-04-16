@@ -17,7 +17,7 @@ struct CVar {
     const char *name;
     CVar_t next;    /* next in the linked list */
     CType_t type;
-    int offset;
+    int start;
     CNode *ast;
 };
 

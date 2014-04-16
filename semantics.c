@@ -311,7 +311,7 @@ int calc_size(CType_t type) {
             }
             break;
         case CVOID: return -1;
-        case CFUNC: return 0;
+        case CFUNC: return 1;
     }
     return (type->size = size);
 }
@@ -855,6 +855,12 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         ERROR((p, "invalid use of undefined type"));
     if (t2 == CPTR && calc_size(op2.type->rec.ref) == -1)
         ERROR((p, "invalid use of undefined type"));
+    if (t1 == CARR)
+    {
+        CType_t ptr = ctype_create("", CPTR, NULL);
+        ptr->rec.ref = op1.type->rec.arr.elem;
+        op1.type = ptr;
+    }
     if (kind == '-')
     {
         if (IS_PTR(t2) && !IS_PTR(t1))
@@ -865,25 +871,32 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
         if (!((IS_INT(t1) || IS_PTR(t1)) && IS_INT(t2)))
             ERROR((p, "invalid operands to binary operator"));
     }
-    if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
+    if ((p->ext.is_const = rch->ext.is_const))
     {
-        int l = lch->ext.const_val,
-            r = rch->ext.const_val,
-            *a = &(p->ext.const_val);
+        int r = rch->ext.const_val;
         if (IS_PTR(t1))
         {
-            /* TODO: constant pointer folding */
-            if (t1 == CPTR)
-                p->ext.const_val = op1.type->rec.ref->size * r;
-            else /* array */
-                p->ext.const_val = op1.type->rec.arr.elem->size * r;
+            CType_t type;
+            p->ext.var = p->chd->ext.var;
+            if (t1 == CPTR) type = op1.type->rec.ref;
+            else type = op1.type->rec.arr.elem;
+            p->ext.offest = p->chd->ext.offest + calc_size(type) * r;
         }
-        else
+        if ((p->ext.is_const &= lch->ext.is_const))
         {
-            switch (kind)
+            int l = lch->ext.const_val,
+                *a = &(p->ext.const_val);
+            if (IS_PTR(t1))
             {
-                case '+': *a = l + r; break;
-                case '-': *a = l - r; break;
+                /* TODO: const pointer */
+            }
+            else
+            {
+                switch (kind)
+                {
+                    case '+': *a = l + r; break;
+                    case '-': *a = l - r; break;
+                }
             }
         }
     }
@@ -1065,33 +1078,34 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             if (!IS_INT(t2))
                 ERROR((p, "array subscript is not an integer"));
             if (t1 == CARR)
-            {
                 op1.type = op1.type->rec.arr.elem;
-                p->ext.is_const = p->chd->ext.is_const;
-            }
             else
-            {
                 op1.type = op1.type->rec.ref;
+            if (post->chd->ext.is_const)
+            {
+                p->ext.offest = p->chd->ext.offest + \
+                                calc_size(op1.type) * post->chd->ext.const_val;
+                p->ext.var = p->chd->ext.var;
             }
+            p->ext.is_const = 0;
             op1.lval = 1;
             break;
         case POSTFIX_CALL:
             if (!(t1 == CPTR && op1.type->rec.ref->type == CFUNC))
                 ERROR((p, "called object is not a function"));
             {
-                CNode *arg = post->chd->chd;
+                CNode *arg = post->chd->chd, *t;
                 CType_t func = p->chd->ext.type;
                 CVar_t param;
                 /* pointer to function */
                 if (func->type == CPTR) func = func->rec.ref;
+                for (t = arg; t; t = t->next)
+                    semantics_exp(t, scope);
                 if ((param = func->rec.func.params))
                 {
                     for (; arg && param;
                             arg = arg->next, param = param->next) 
-                    {
-                        semantics_exp(arg, scope);
                         exp_check_aseq_(param->type, arg->ext.type, arg);
-                    }
                     if (arg || param)
                         ERROR((p, "too many/few arguments to the function"));
                 }
@@ -1155,6 +1169,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 else
                 {
                     p->ext.type = lu->rec.type;
+                    p->ext.var = NULL;
                     res.type = p->ext.type;
                     res.lval = res.type->type == CFUNC;
                     POINTER_CONV(res.type, p);

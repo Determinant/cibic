@@ -400,9 +400,9 @@ char *cnode_debug_type_repr(CNode *ast) {
         }
         head += sprintf(head, "(%d:%d)", ast->loc.row, ast->loc.col);
         if (ast->ext.type)
-        sprintf(head, "->(var:%lx type:%lx ic:%d cv:%d)",
+        sprintf(head, "->(var:%lx type:%lx ic:%d cv:%d off:%d)",
                 (size_t)ast->ext.var, (size_t)ast->ext.type,
-                ast->ext.is_const, ast->ext.const_val);
+                ast->ext.is_const, ast->ext.const_val, ast->ext.offest);
     }
     return buffer;
 }
