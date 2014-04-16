@@ -50,6 +50,7 @@ typedef struct CNode {
         CVar_t var;
         int const_val;
         int is_const;
+        int offest; /* offest from var */
     } ext;
     struct CNode *chd, *next;
     /* For error reporting */

@@ -1064,7 +1064,15 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             t2 = op2.type->type;
             if (!IS_INT(t2))
                 ERROR((p, "array subscript is not an integer"));
-            op1.type = op1.type->rec.arr.elem;
+            if (t1 == CARR)
+            {
+                op1.type = op1.type->rec.arr.elem;
+                p->ext.is_const = p->chd->ext.is_const;
+            }
+            else
+            {
+                op1.type = op1.type->rec.ref;
+            }
             op1.lval = 1;
             break;
         case POSTFIX_CALL:
