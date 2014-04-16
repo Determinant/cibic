@@ -33,6 +33,7 @@ CNode *cnode_create_nop() {
     CNode *nop = NEW_CNODE;
     nop->type = NOP;
     nop->next = nop->chd = NULL;
+    nop->ext.type = NULL;
     return nop;
 }
 
@@ -42,6 +43,7 @@ CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap) {
     exp->type = type;
     exp->rec.subtype = subtype;
     exp->next = exp->chd = NULL;
+    exp->ext.type = NULL;
     for (i = 0; i < pnum; i++)
     {
         CNode *subexp = va_arg(ap, CNode*);
@@ -69,6 +71,7 @@ CNode *cnode_create_identifier(char *val) {
     exp->type = ID;
     exp->chd = exp->next = NULL;
     exp->rec.strval = val;
+    exp->ext.type = NULL;
     return exp;
 }
 
@@ -78,6 +81,7 @@ CNode *cnode_create_int_const(int val) {
     exp->type = INT;
     exp->chd = exp->next = NULL;
     exp->rec.intval = val;
+    exp->ext.type = NULL;
     return exp;
 }
 
@@ -87,6 +91,7 @@ CNode *cnode_create_char_const(char *val) {
     exp->type = CHAR;
     exp->chd = exp->next = NULL;
     exp->rec.strval = val;
+    exp->ext.type = NULL;
     return exp;
 }
 
@@ -95,6 +100,7 @@ CNode *cnode_create_str_const(char *val) {
     exp->type = STR;
     exp->chd = exp->next = NULL;
     exp->rec.strval = val;
+    exp->ext.type = NULL;
     return exp;
 }
 
@@ -140,6 +146,7 @@ CNode *cnode_create_initr(int initr_type, CNode *body) {
     initr->rec.subtype = initr_type;
     initr->chd = body;
     initr->next = NULL;
+    initr->ext.type = NULL;
     return initr;
 }
 
@@ -151,6 +158,7 @@ CNode *cnode_create_decl(CNode *type, CNode *init_declrs) {
 #endif
     decl->type = DECL;
     decl->next = NULL;
+    decl->ext.type = NULL;
     decl->chd = init_declrs;
     init_declrs->next = type;
     return decl;
@@ -165,6 +173,7 @@ CNode *cnode_create_func(CNode *type, CNode *declr, CNode *stmt) {
 #endif
     func->type = FUNC_DEF;
     func->next = NULL;
+    func->ext.type = NULL;
     func->chd = stmt;
     stmt->next = declr;
     declr->next = type;
@@ -179,6 +188,7 @@ CNode *cnode_create_init_declr(CNode *declr, CNode *initr) {
 #endif
     init_declr->type = INIT_DECLR;
     init_declr->next = NULL;
+    init_declr->ext.type = NULL;
     init_declr->chd = initr;
     initr->next = declr;
     return init_declr;
@@ -192,6 +202,7 @@ CNode *cnode_create_struct_field(CNode *type_spec, CNode *declrs) {
 #endif
     field->type = FIELD;
     field->next = NULL;
+    field->ext.type = NULL;
     field->chd = declrs;
     declrs->next = type_spec;
     return field;
@@ -205,6 +216,7 @@ CNode *cnode_create_plain_decl(CNode *type_spec, CNode *declr) {
 #endif
     pdecl->type = PLAIN_DECL;
     pdecl->next = NULL;
+    pdecl->ext.type = NULL;
     pdecl->chd = declr;
     declr->next = type_spec;
     return pdecl;
@@ -218,6 +230,7 @@ CNode *cnode_create_typedef(CNode *type, CNode *declrs) {
     CNode *def = NEW_CNODE;
     def->type = TYPEDEF;
     def->next = NULL;
+    def->ext.type = NULL;
     def->chd = declrs;
     declrs->next = type;
     return def;
@@ -227,6 +240,7 @@ CNode *cnode_list_wrap(int type, CNode *list) {
     CNode *wlist = NEW_CNODE;
     wlist->type = type;
     wlist->next = NULL;
+    wlist->ext.type = NULL;
     wlist->chd = list;
     return wlist;
 }
@@ -349,9 +363,7 @@ char *cnode_debug_type_repr(CNode *ast) {
             default: assert(0);
         }
     }
-    else if (ast->type == STMT)
-    {
-        switch (ast->rec.subtype)
+    else if (ast->type == STMT) { switch (ast->rec.subtype)
         {
             case STMT_EXP: type = "exp"; break;
             case STMT_COMP: type = "blk"; break;
@@ -375,19 +387,21 @@ char *cnode_debug_type_repr(CNode *ast) {
     }
     else
     {
-        if (type == NULL)
-            puts("");
+        if (type == NULL) puts("");
         assert(type);
     }
-    if (aptr == abuff)
-        sprintf(buffer, "%s(%d:%d)->(var:%lx|type:%lx|ic:%d|cv:%d)", type,
-                ast->loc.row, ast->loc.col, (size_t)ast->ext.var, (size_t)ast->ext.type,
-                ast->ext.is_const, ast->ext.const_val);
-    else
     {
-        *aptr = '\0';
-        sprintf(buffer, "%s:%s(%d:%d)->(var:%lx|type:%lx|ic:%d|cv:%d)", type, abuff,
-                ast->loc.row, ast->loc.col, (size_t)ast->ext.var, (size_t)ast->ext.type,
+        char *head = buffer;
+        head += sprintf(head, "%s", type);
+        if (aptr != abuff) 
+        { 
+            *aptr = '\0';
+            head += sprintf(head, ":%s", abuff);
+        }
+        head += sprintf(head, "(%d:%d)", ast->loc.row, ast->loc.col);
+        if (ast->ext.type)
+        sprintf(head, "->(var:%lx type:%lx ic:%d cv:%d)",
+                (size_t)ast->ext.var, (size_t)ast->ext.type,
                 ast->ext.is_const, ast->ext.const_val);
     }
     return buffer;
