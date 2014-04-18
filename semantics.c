@@ -295,7 +295,10 @@ int calc_size(CType_t type) {
                 CVar_t p = type->rec.st.flist;
                 if (!p) return -1;
                 for (; p; p = p->next)
+                {
                     size += align_shift(calc_size(p->type));
+                    p->start = size;
+                }
             }
             break;
         case CUNION:
@@ -307,6 +310,7 @@ int calc_size(CType_t type) {
                 {
                     int t = align_shift(calc_size(p->type));
                     if (t > size) size = t;
+                    p->start = 0;
                 }
             }
             break;
@@ -1117,7 +1121,8 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                                         post->chd->rec.strval);
                 if (!fv)
                     ERROR((p, "struct/union has no member named '%s'", post->chd->rec.strval));
-                p->ext.var = fv;
+                p->ext.var = NULL;
+                p->ext.offest = fv->start;
                 op1.type = fv->type;
                 op1.lval = 1;
             }
