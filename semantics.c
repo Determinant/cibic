@@ -1124,7 +1124,6 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 p->ext.var = NULL;
                 p->ext.offest = fv->start;
                 op1.type = fv->type;
-                op1.lval = 1;
             }
             break;
         case POSTFIX_PTR:
