@@ -13,6 +13,7 @@ Features
 - Complex cast support (``(int (*)())addr``, ``(int (*)[10])addr``, etc.)
 - ``typedef`` support (together with complex decl)
 - Forward declaration
+- Sophisticated semantic checking
+- Small memory footprint
 - Sophisticated error reporting
 - User-friendly AST printing
-- Small memory footprint
