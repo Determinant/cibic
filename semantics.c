@@ -1169,10 +1169,10 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 else
                 {
                     p->ext.type = lu->rec.type;
-                    p->ext.var = NULL;
                     res.type = p->ext.type;
                     res.lval = res.type->type == CFUNC;
                     POINTER_CONV(res.type, p);
+                    p->ext.var = cvar_create(p->ext.type->name, res.type, NULL);
                 }
                 p->ext.is_const = res.type->type == CARR ||
                                     res.type->type == CFUNC;
@@ -1763,7 +1763,7 @@ void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
 void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
 void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
-void semantics_check(CNode *p) {
+CScope_t semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
     basic_type_char = ctype_create("char", CCHAR, NULL);
@@ -1816,4 +1816,5 @@ void semantics_check(CNode *p) {
             }
     }
     cnode_debug_print(ast_root, 1);
+    return scope;
 }

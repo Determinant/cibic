@@ -148,7 +148,7 @@ void cscope_debug_print(CScope_t cs);
 unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
 
-void semantics_check(CNode *ast);
+CScope_t semantics_check(CNode *ast);
 
 enum DefState{
     FORCE_ID,

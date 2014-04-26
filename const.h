@@ -22,7 +22,7 @@ enum {
     NS_ID,
     NS_TAG
 };
-
+#define MAX_BLOCK       1024
 #define MAX_CHDN        1024
 #define MAX_DEBUG_PRINT_BUFF 1024
 #define MAX_DEBUG_PRINT_LVL  1024

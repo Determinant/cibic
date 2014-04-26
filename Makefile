@@ -6,9 +6,9 @@ run:
 db:
 	gdb cibic
 
-cibic: lex.yy.o cibic.tab.o ast.o main.o semantics.o
+cibic: lex.yy.o cibic.tab.o ast.o main.o semantics.o ssa.o
 	mkdir -p bin
-	gcc -o bin/cibic lex.yy.o cibic.tab.o ast.o main.o semantics.o
+	gcc -o bin/cibic lex.yy.o cibic.tab.o ast.o main.o semantics.o ssa.o
 	cp bin/cibic cibic
 lex.yy.o: lex.yy.c cibic.tab.c
 	gcc -c lex.yy.c
@@ -20,6 +20,8 @@ ast.o:	ast.c ast.h
 	gcc -c ast.c -g -Wall -Wextra -DCIBIC_DEBUG
 semantics.o: semantics.c semantics.h
 	gcc -c semantics.c -g -Wall -Wextra -DCIBIC_DEBUG
+ssa.o:	ssa.c ssa.h
+	gcc -c ssa.c -g -Wall -Wextra -DCIBIC_DEBUG
 lex.yy.c: cibic.l
 	flex cibic.l
 cibic.tab.c: cibic.y

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include "cibic.tab.h"
 #include "ast.h"
+#include "ssa.h"
 #include "semantics.h"
 
 extern char linebuff[];
@@ -49,6 +50,12 @@ void print_sem() {
     yyparse();
     semantics_check(ast_root);
 /*    cnode_debug_print(ast_root, 1); */
+}
+
+void print_ssa() {
+    cibic_init();
+    yyparse();
+    ssa_generate(semantics_check(ast_root));
 }
 
 void print_help() {
@@ -114,7 +121,7 @@ int main(int argc, char **argv) {
     {
         case PRINT_AST: print_ast(); break;
         case PRINT_HELP: print_help(); break;
-        default: print_sem();
+        default: print_ssa();
     }
     return 0;
 }
