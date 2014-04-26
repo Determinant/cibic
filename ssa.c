@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include "ast.h"
 #include "ssa.h"
 #define NEW(type) ((type *)malloc(sizeof(type)))
@@ -35,6 +36,12 @@ CInst_t cblock_getback(CBlock_t cblk) {
 
 int cblock_isempty(CBlock_t cblk) {
     return cblk->insts->prev == cblk->insts;
+}
+
+CVar_t ctmp_create(CType_t type) {
+    static char buff[MAX_NAMELEN];
+    sprintf(buff, "t%d", tcnt++);
+    return cvar_create(strdup(buff), type, NULL);
 }
 
 void cfg_clear() {
@@ -85,17 +92,47 @@ void cinst_print(CInst_t inst) {
             fprintf(stderr, ") goto _L");
             copr_print(&inst->dest);
             break;
+        case BNEZ:
+            fprintf(stderr, "if (");
+            copr_print(&inst->src1);
+            fprintf(stderr, ") goto _L");
+            copr_print(&inst->dest);
+            break;
         case GOTO:
             fprintf(stderr, "goto _L");
             copr_print(&inst->dest);
             break;
-        case ADD:
+        case ARR:
             copr_print(&inst->dest);
             fprintf(stderr, " = ");
             copr_print(&inst->src1);
-            fprintf(stderr, " + ");
+            fprintf(stderr, "[");
             copr_print(&inst->src2);
+            fprintf(stderr, "]");
             break;
+        default:
+            {
+                const char *op;
+                switch (inst->op)
+                {
+                    case MUL: op = "*"; break;
+                    case DIV: op = "/"; break;
+                    case MOD: op = "%"; break;
+                    case ADD: op = "+"; break;
+                    case SUB: op = "-"; break;
+                    case SHL: op = "<<"; break;
+                    case SHR: op = ">>"; break;
+                    case AND: op = "&"; break;
+                    case XOR: op = "^"; break;
+                    case OR: op = "|"; break;
+                    default: ;
+                }
+                copr_print(&inst->dest);
+                fprintf(stderr, " = ");
+                copr_print(&inst->src1);
+                fprintf(stderr, " %s ", op);
+                copr_print(&inst->src2);
+            }
     }
     fprintf(stderr, "\n");
 }
@@ -141,6 +178,7 @@ COpr ssa_exp(CNode *p, CBlock_t cur) {
             res.kind = VAR;
             res.info.var = p->ext.var;
             break;
+
         default:
             if (p->ext.is_const)
             {
@@ -149,37 +187,138 @@ COpr ssa_exp(CNode *p, CBlock_t cur) {
             }
             else
             {
+                int op = p->rec.subtype;
+                int rec = 1, auto_dest = 1;
                 COpr lhs = ssa_exp(p->chd, cur), rhs;
                 if (p->chd->next)
                     rhs = ssa_exp(p->chd->next, cur);
-                switch (p->rec.subtype)
+
+                inst->src1 = lhs;
+                inst->src2 = rhs;
+                switch (op)
                 {
-                case '=' : 
-                    inst->op = MOVE;
-                    inst->dest = lhs;
-                    inst->src1 = rhs;
-                    break;
-                case ASS_ADD:
-                    inst->op = ADD;
-                    inst->dest = lhs;
-                    inst->src1 = lhs;
-                    inst->src2 = rhs;
-                    break;
-                    /*
-                case ASS_MUL:
-                case ASS_DIV:
-                case ASS_MOD:
-                case ASS_ADD:
-                case ASS_SUB:
-                case ASS_SHL:
-                case ASS_SHR:
-                case ASS_AND:
-                case ASS_XOR:
-                case ASS_OR:
-                */
+                    case OPT_OR: inst->op = LOR; break;
+                    case OPT_AND: inst->op = LAND; break;
+                    case OPT_SHL: inst->op = SHL; break;
+                    case OPT_SHR: inst->op = SHR; break;
+                    case '|': inst->op = OR; break;
+                    case '^': inst->op = XOR; break;
+                    case OPT_EQ: inst->op = EQ; break;
+                    case OPT_NE: inst->op = NE; break;
+                    case '<': inst->op = LT; break;
+                    case '>': inst->op = GT; break;
+                    case OPT_LE: inst->op = LE; break;
+                    case OPT_GE: inst->op = GE; break;
+                    case '/': inst->op = DIV; break;
+                    case '%': inst->op = MOD; break;
+                    case '&':
+                              if (p->chd->next)
+                                  inst->op = AND;
+                              else
+                              {
+                                  rec = 0;
+                                  res.kind = IMM;
+                                  res.info.imm = 0;
+                                  /* TODO: be filled in with correct address */
+                              }
+                              break;
+                    case '*':
+                              if (p->chd->next)
+                                  inst->op = MUL;
+                              else
+                              {
+                                  inst->op = ARR;
+                                  inst->src1 = lhs;
+                                  inst->src2.kind = IMM;
+                                  inst->src2.info.imm = 0;
+                              }
+                              break;
+                    case '+':
+                              if (p->chd->next)
+                                  inst->op = ADD;
+                              else res = lhs;
+                              break;
+                    case '-':
+                              if (p->chd->next)
+                                  inst->op = SUB;
+                              else
+                              {
+                                  inst->op = NEG;
+                                  inst->src1 = lhs;
+                              }
+                              break;
+                    case '~':
+                              inst->op = NOR;
+                              inst->src1 = lhs;
+                              inst->src2.kind = IMM;
+                              inst->src2.info.imm = 0;
+                              break;
+                    case '!':
+                              inst->op = SEQ;
+                              inst->src1 = lhs;
+                              inst->src2.kind = IMM;
+                              inst->src2.info.imm = 0;
+                              break;
+                    case OPT_INC:
+                              auto_dest = 0;
+                              inst->op = ADD;
+                              inst->dest = lhs;
+                              inst->src1 = lhs;
+                              inst->src2.kind = IMM;
+                              inst->src2.info.imm = 1;
+                              break;
+                    case OPT_DEC:
+                              auto_dest = 0;
+                              inst->op = SUB;
+                              inst->dest = lhs;
+                              inst->src1 = lhs;
+                              inst->src2.kind = IMM;
+                              inst->src2.info.imm = 1;
+                              break;
+                    default:
+                              auto_dest = 0;
+                              if (op == '=')
+                              {
+                                  if (rhs.kind == VAR)
+                                  {
+                                      inst->op = MOVE;
+                                      inst->dest = lhs;
+                                      inst->src1 = rhs;
+                                      cblock_append(cur, inst);
+                                  }
+                                  else
+                                  {
+                                      inst = cblock_getback(cur);
+                                      inst->dest = lhs;
+                                  }
+                                  res = inst->dest;
+                                  break;
+                              }
+                              inst->dest = lhs;
+                              switch (op)
+                              {
+                                  case ASS_MUL: inst->op = MUL; break;
+                                  case ASS_DIV: inst->op = DIV; break;
+                                  case ASS_MOD: inst->op = MOD; break;
+                                  case ASS_ADD: inst->op = ADD; break;
+                                  case ASS_SUB: inst->op = SUB; break;
+                                  case ASS_SHL: inst->op = SHL; break;
+                                  case ASS_SHR: inst->op = SHR; break;
+                                  case ASS_AND: inst->op = AND; break;
+                                  case ASS_XOR: inst->op = XOR; break;
+                                  case ASS_OR:  inst->op = OR; break;
+                              }
                 }
-                cblock_append(cur, inst);
-                res = inst->dest;
+                if (rec)
+                {
+                    if (auto_dest)
+                    {
+                        inst->dest.kind = TMP;
+                        inst->dest.info.var = ctmp_create(p->ext.type);
+                    }
+                    cblock_append(cur, inst);
+                    res = inst->dest;
+                }
             }
     }
     return res;
@@ -208,7 +347,7 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     cond_blk->ref = 1;
     cblock_append(cur, j_inst);
 
-    if_inst->op = BEQZ;
+    if_inst->op = BNEZ;
     if_inst->src1 = cblock_getback(cond_blk)->dest;
     if_inst->dest.kind = IMM;
     if_inst->dest.info.imm = loop_blk->id;
@@ -221,6 +360,8 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
 
     DBLINK(cur, loop_blk);
     DBLINK(cond_blk, next_blk);
+
+    return next_blk;
 }
 
 CBlock_t ssa_for(CNode *p, CBlock_t cur) {
@@ -249,7 +390,7 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     cond_blk->ref = 1;
     cblock_append(cur, j_inst);
 
-    if_inst->op = BEQZ;
+    if_inst->op = BNEZ;
     if_inst->src1 = cblock_getback(cond_blk)->dest;
     if_inst->dest.kind = IMM;
     if_inst->dest.info.imm = loop_blk->id;

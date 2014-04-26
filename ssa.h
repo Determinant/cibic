@@ -20,8 +20,10 @@ struct CInst {
     enum {
         MOVE,
         BEQZ,   /* conditional jump */
+        BNEZ,
         GOTO,   /* unconditional jump */
-        ADD
+        ARR,    /* displacement */
+        MUL, DIV, MOD, ADD, SUB, SHL, SHR, AND, XOR, OR, LOR, LAND, NEG, NOR, SEQ, EQ, NE, LT, GT, LE, GE
     } op;
     COpr dest, src1, src2;
     CInst_t next, prev;

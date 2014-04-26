@@ -1174,8 +1174,8 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                     POINTER_CONV(res.type, p);
                     p->ext.var = cvar_create(p->ext.type->name, res.type, NULL);
                 }
-                p->ext.is_const = res.type->type == CARR ||
-                                    res.type->type == CFUNC;
+                p->ext.is_const = 0; /* res.type->type == CARR ||
+                                    res.type->type == CFUNC; */
             }
             break;
         case INT:
@@ -1197,7 +1197,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 res.type = type;
                 res.lval = 0;
                 p->ext.is_const = 1;
-                p->ext.const_val = (long int)p->rec.strval;
+                /* TODO: to be filled with address */
             }
             break;
         case EXP:
