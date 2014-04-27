@@ -24,7 +24,13 @@ struct CInst {
         GOTO,   /* unconditional jump */
         ARR,    /* displacement */
         WARR,
-        MUL, DIV, MOD, ADD, SUB, SHL, SHR, AND, XOR, OR, LOR, LAND, NEG, NOR, SEQ, EQ, NE, LT, GT, LE, GE
+        PUSH,   /* push to stack top */
+        CALL,   /* call function */
+        RET,    /* return */
+        MUL, DIV, MOD, ADD, SUB,
+        SHL, SHR, AND, XOR, OR,
+        LOR, LAND, NEG, NOR, SEQ,
+        EQ, NE, LT, GT, LE, GE
     } op;
     COpr dest, src1, src2;
     CInst_t next, prev;

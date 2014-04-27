@@ -24,10 +24,11 @@ enum {
 };
 #define MAX_BLOCK       1024
 #define MAX_CHDN        1024
-#define MAX_DEBUG_PRINT_BUFF 1024
-#define MAX_DEBUG_PRINT_LVL  1024
+#define MAX_DEBUG_PRINT_BUFF 10240000
+#define MAX_DEBUG_PRINT_LVL  10240000
+#define MAX_LINEBUFF         10240000
 #define MAX_TABLE_SIZE  1021
-#define MAX_ERROR_BUFF  1024
+#define MAX_ERROR_BUFF  10240000
 #define MAX_NAMELEN     1024
 #define INT_SIZE        4
 #define CHAR_SIZE       1

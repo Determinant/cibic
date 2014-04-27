@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <assert.h>
 #include "ast.h"
 #include "ssa.h"
 #define NEW(type) ((type *)malloc(sizeof(type)))
@@ -43,7 +44,8 @@ void cblock_popfront(CBlock_t cblk) {
 }
 
 CInst_t cblock_getback(CBlock_t cblk) {
-    return cblk->insts->prev;
+    CInst_t res = cblk->insts->prev;
+    return res != cblk->insts ? res : NULL;
 }
 
 int cblock_isempty(CBlock_t cblk) {
@@ -139,6 +141,19 @@ void cinst_print(CInst_t inst) {
             fprintf(stderr, "] = ");
             copr_print(&inst->src1);
             break;
+        case PUSH:
+            fprintf(stderr, "push ");
+            copr_print(&inst->src1);
+            break;
+        case CALL:
+            copr_print(&inst->dest);
+            fprintf(stderr, " = call ");
+            copr_print(&inst->src1);
+            break;
+        case RET:
+            fprintf(stderr, "return ");
+            copr_print(&inst->src1);
+            break;
         default:
             {
                 const char *op;
@@ -204,6 +219,8 @@ void ssa_generate(CScope_t scope) {
                 !func->rec.func.body) continue;
             fprintf(stderr, "%s:\n", tp->rec.type->name);
             ssa_func_print(ssa_func(func));
+            gbbase += bcnt;
+            bcnt = 0;
         }
 }
 
@@ -250,6 +267,22 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2.kind = IMM;
                 base->src2.info.imm = p->ext.offset;
+            }
+            break;
+        case POSTFIX_CALL:
+            {
+                CNode *arg = post->chd->chd;
+                base->op = CALL;
+                base->src1 = ssa_exp_(p->chd, cur, lval, succ);
+                base->dest.kind = TMP;
+                base->dest.info.var = ctmp_create(rt);
+                for (; arg; arg = arg->next)
+                {
+                    CInst_t pi = NEW(CInst);
+                    pi->op = PUSH;
+                    pi->src1 = ssa_exp_(arg, cur, lval, succ);
+                    cblock_append(cur, pi);
+                }
             }
             break;
         default:
@@ -299,6 +332,7 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
     return base->dest;
 }
 
+COpr ssa_exp(CNode *, CBlock_t, int);
 COpr ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
     COpr res;
     CInst_t inst = NEW(CInst);
@@ -326,7 +360,12 @@ COpr ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 int op = p->rec.subtype;
                 int rec = 1, auto_dest = 1;
 
-                if (op == '=')
+                if (op == ',')
+                {
+                    ssa_exp(p->chd, cur, 1);
+                    return ssa_exp_(p->chd->next, cur, NULL, succ);
+                }
+                else if (op == '=')
                 {
                     inst->src1 = ssa_exp_(p->chd->next, cur, NULL, succ);
                     ssa_exp_(p->chd, cur, inst, succ);
@@ -534,11 +573,13 @@ COpr ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
         free(succ);
     }
     last = cblock_getback(cur);
-    if (discard_last && last->dest.kind == TMP) /* temporary not used */
+    if (discard_last && last 
+                    && last->dest.kind == TMP
+                    && last->op != CALL) /* temporary not used */
     {
         ctmp_destroy(last->dest.info.var);
-        free(last);
         cblock_popback(cur);
+        free(last);
     }
     return res;
 }
@@ -547,18 +588,17 @@ CBlock_t ssa_stmt(CNode *, CBlock_t, CBlock_t);
 CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     CNode *exp = p->chd;
     CBlock_t loop_blk = cblock_create(), loop_t,
-             cond_blk,
+             cond_blk = cblock_create(),
              next_blk = cblock_create();
     CInst_t j_inst = NEW(CInst),
             if_inst = NEW(CInst);
 
+    DBLINK(cond_blk, next_blk);
     loop_t = ssa_stmt(exp->next, loop_blk, next_blk);
 
-    cond_blk = cblock_create();
     DBLINK(loop_t, cond_blk);
     cfg_add_edge(loop_t, cond_blk);
 
-    ssa_exp(exp, cond_blk, 0);
 
     j_inst->op = GOTO;
     j_inst->dest.kind = IMM;
@@ -567,7 +607,7 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     cblock_append(cur, j_inst);
 
     if_inst->op = BNEZ;
-    if_inst->src1 = cblock_getback(cond_blk)->dest;
+    if_inst->src1 = ssa_exp(exp, cond_blk, 0);
     if_inst->dest.kind = IMM;
     if_inst->dest.info.imm = loop_blk->id;
     loop_blk->ref = 1;
@@ -578,7 +618,6 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     cfg_add_edge(cond_blk, next_blk);
 
     DBLINK(cur, loop_blk);
-    DBLINK(cond_blk, next_blk);
 
     return next_blk;
 }
@@ -588,19 +627,18 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
           *exp2 = exp1->next,
           *exp3 = exp2->next;
     CBlock_t loop_blk = cblock_create(), loop_t,
-             cond_blk,
+             cond_blk = cblock_create(),
              next_blk = cblock_create();
     CInst_t j_inst = NEW(CInst),
             if_inst = NEW(CInst);
 
+    DBLINK(cond_blk, next_blk);
     loop_t = ssa_stmt(exp3->next, loop_blk, next_blk);
 
-    cond_blk = cblock_create();
     DBLINK(loop_t, cond_blk);
     cfg_add_edge(loop_t, cond_blk);
 
     ssa_exp(exp1, cur, 1);
-    ssa_exp(exp2, cond_blk, 0);
     ssa_exp(exp3, loop_t, 1);
 
     j_inst->op = GOTO;
@@ -610,7 +648,7 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     cblock_append(cur, j_inst);
 
     if_inst->op = BNEZ;
-    if_inst->src1 = cblock_getback(cond_blk)->dest;
+    if_inst->src1 = ssa_exp(exp2, cond_blk, 0);
     if_inst->dest.kind = IMM;
     if_inst->dest.info.imm = loop_blk->id;
     loop_blk->ref = 1;
@@ -621,7 +659,6 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     cfg_add_edge(cond_blk, next_blk);
 
     DBLINK(cur, loop_blk);
-    DBLINK(cond_blk, next_blk);
 
     return next_blk;
 }
@@ -633,9 +670,19 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
              next_blk,
              else_blk, else_t;
     CInst_t if_inst = NEW(CInst);
-    ssa_exp(p->chd, cur, 0);
+    COpr rt = ssa_exp(p->chd, cur, 0);
+    if (rt.kind == IMM)
+    {
+        if (rt.info.imm)
+            return ssa_stmt(body1, cur, loop_exit);
+        else if (body2->type != NOP)
+            return ssa_stmt(body2, cur, loop_exit);
+        else
+            return cur;
+    }
+
     if_inst->op = BEQZ;
-    if_inst->src1 = cblock_getback(cur)->dest; /* calculated cond */
+    if_inst->src1 = rt; /* calculated cond */
     if_inst->dest.kind = IMM;
     cblock_append(cur, if_inst);
 
@@ -686,6 +733,39 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     return next_blk;
 }
 
+CBlock_t ssa_ret(CNode *p, CBlock_t cur) {
+    CInst_t inst = NEW(CInst);
+    inst->op = RET;
+    inst->src1 = ssa_exp(p->chd, cur, 0);
+    cblock_append(cur, inst);
+    return cur;
+}
+
+CBlock_t ssa_break(CBlock_t cur, CBlock_t loop_exit) {
+    CInst_t inst = NEW(CInst);
+    assert(loop_exit);
+    inst->op = GOTO;
+    inst->dest.kind = IMM;
+    inst->dest.info.imm = loop_exit->id;
+    loop_exit->ref = 1;
+    cblock_append(cur, inst);
+    cfg_add_edge(cur, loop_exit);
+    return cur;
+}
+
+CBlock_t ssa_cont(CBlock_t cur, CBlock_t loop_exit) {
+    CInst_t inst = NEW(CInst);
+    assert(loop_exit);
+    loop_exit = loop_exit->prev;    /* loop cond */
+    inst->op = GOTO;
+    inst->dest.kind = IMM;
+    inst->dest.info.imm = loop_exit->id;
+    loop_exit->ref = 1;
+    cblock_append(cur, inst);
+    cfg_add_edge(cur, loop_exit);
+    return cur;
+}
+
 CBlock_t ssa_comp(CNode *, CBlock_t, CBlock_t loop_exit);
 CBlock_t ssa_stmt(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     switch (p->rec.subtype)
@@ -702,15 +782,12 @@ CBlock_t ssa_stmt(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
             return ssa_for(p, cur);
         case STMT_WHILE:
             return ssa_while(p, cur);
-/*            return ssa_while(p, cur);*/
-            /*
         case STMT_CONT:
-            return ssa_cont(p, cur, loop_exit);
+            return ssa_cont(cur, loop_exit);
         case STMT_BREAK:
-            return ssa_break(p, cur, loop_exit);
+            return ssa_break(cur, loop_exit);
         case STMT_RET:
-            return ssa_return(p, cur, loop_exit);
-            */
+            return ssa_ret(p, cur);
     }
     return cur;
 }

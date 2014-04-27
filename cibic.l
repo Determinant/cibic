@@ -1,7 +1,7 @@
 %{
 #include "cibic.tab.h"
+#include "const.h"
 #include "semantics.h"
-#define MAX_LINEBUFF 1024
 int yycolumn = 1;
 char linebuff[MAX_LINEBUFF], *lptr = linebuff;
 

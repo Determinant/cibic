@@ -493,7 +493,7 @@ CVar_t semantics_pdecl(CNode *p, CScope_t scope) {
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
     static CVar dummy;
-    CVar_t params = &dummy, tail = params;
+    CVar_t params = NULL;
     CTable_t ct;
     if (!(p = p->chd)) return NULL; /* no parameters */
     ct = ctable_create(bkdr_hash, ctable_cvar_print);
@@ -504,12 +504,16 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
         if (scope)  /* params inside a function definition */
             if (!ctable_insert(ct, var->name, var, 0))
                 ERROR((var->ast, "redefinition of parameter '%s'", var->name));
+        var->next = params;
+        params = var;
+        /*
         tail->next = var;
         tail = var;
+        */
     }
     ctable_destory(ct);
-    tail->next = NULL;
-    return params->next;
+    /* tail->next = NULL; */
+    return params;
 }
 
 ExpType semantics_exp(CNode *, CScope_t);
@@ -1798,7 +1802,7 @@ CScope_t semantics_check(CNode *p) {
             default: assert(0);
         }
     }
-    cscope_debug_print(scope);
+/*    cscope_debug_print(scope);
     {
         CTNode *p;
         int i;
@@ -1819,6 +1823,6 @@ CScope_t semantics_check(CNode *p) {
                 fprintf(stderr, "\n\n");
             }
     }
-    cnode_debug_print(ast_root, 1);
+    cnode_debug_print(ast_root, 1); */
     return scope;
 }
