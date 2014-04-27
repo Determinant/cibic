@@ -23,6 +23,7 @@ struct CInst {
         BNEZ,
         GOTO,   /* unconditional jump */
         ARR,    /* displacement */
+        WARR,
         MUL, DIV, MOD, ADD, SUB, SHL, SHR, AND, XOR, OR, LOR, LAND, NEG, NOR, SEQ, EQ, NE, LT, GT, LE, GE
     } op;
     COpr dest, src1, src2;

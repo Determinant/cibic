@@ -74,14 +74,16 @@ void print_help() {
 static struct option lopts[] = {
     { "ast", no_argument, 0, 'a'},
     { "help", no_argument, 0, 'h'},
+    { "sem", no_argument, 0, 'm'},
     {0, 0, 0, 0}
 };
 
 enum {
     PRINT_AST,
     PRINT_HELP,
-    PRINT_SEM
-} mode = PRINT_SEM;
+    PRINT_SEM,
+    PRINT_SSA
+} mode = PRINT_SSA;
 
 int main(int argc, char **argv) {
     int option_index = 0;
@@ -95,6 +97,7 @@ int main(int argc, char **argv) {
             case 0: break;
             case 'a': mode = PRINT_AST; break;
             case 'h': print_help(); return 0;
+            case 'm': mode = PRINT_SEM; break;
         }
     }
     if (optind == argc - 1)
@@ -121,6 +124,7 @@ int main(int argc, char **argv) {
     {
         case PRINT_AST: print_ast(); break;
         case PRINT_HELP: print_help(); break;
+        case PRINT_SEM: print_sem(); break;
         default: print_ssa();
     }
     return 0;

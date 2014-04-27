@@ -30,6 +30,12 @@ void cblock_append(CBlock_t cblk, CInst_t inst) {
     (inst->next = head)->prev = inst;
 }
 
+void cblock_popback(CBlock_t cblk) {
+    CInst_t last = cblk->insts->prev;
+    last->next->prev = last->prev;
+    last->prev->next = last->next;
+}
+
 CInst_t cblock_getback(CBlock_t cblk) {
     return cblk->insts->prev;
 }
@@ -42,6 +48,11 @@ CVar_t ctmp_create(CType_t type) {
     static char buff[MAX_NAMELEN];
     sprintf(buff, "t%d", tcnt++);
     return cvar_create(strdup(buff), type, NULL);
+}
+
+void ctmp_destroy(CVar_t type) {
+    free(type->name); /* allocated dynamically */
+    free(type);
 }
 
 void cfg_clear() {
@@ -110,6 +121,18 @@ void cinst_print(CInst_t inst) {
             copr_print(&inst->src2);
             fprintf(stderr, "]");
             break;
+        case NEG:
+            copr_print(&inst->dest);
+            fprintf(stderr, " = -");
+            copr_print(&inst->src1);
+            break;
+        case WARR:
+            copr_print(&inst->dest);
+            fprintf(stderr, "[");
+            copr_print(&inst->src2);
+            fprintf(stderr, "] = ");
+            copr_print(&inst->src1);
+            break;
         default:
             {
                 const char *op;
@@ -168,7 +191,66 @@ void ssa_generate(CScope_t scope) {
         }
 }
 
-COpr ssa_exp(CNode *p, CBlock_t cur) {
+COpr ssa_exp_(CNode *p, CBlock_t, CInst_t);
+COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval) {
+    CNode *post = p->chd->next;
+    CType_t rt = p->ext.type;
+    CInst_t base = NEW(CInst);
+    switch (post->rec.subtype)
+    {
+        case POSTFIX_ARR:
+            {
+                CInst_t off = NEW(CInst);
+                off->dest.kind = TMP;
+                off->dest.info.var = ctmp_create(post->chd->ext.type);
+                off->op = MUL;
+                off->src1 = ssa_exp_(post->chd, cur, 0);
+                off->src2.kind = IMM;
+                off->src2.info.imm = calc_size(rt);
+                cblock_append(cur, off);
+
+                base->dest.kind = TMP;
+                base->dest.info.var = ctmp_create(rt);
+                base->src1 = ssa_exp_(p->chd, cur, 0);
+                base->src2 = off->dest;
+                base->op = rt->type == CARR ? ADD : ARR;
+            }
+            break;
+        case POSTFIX_DOT:
+            {
+                base->dest.kind = TMP;
+                base->dest.info.var = ctmp_create(rt);
+                base->op = (rt->type == CSTRUCT || rt->type == CUNION) ? ADD : ARR;
+                base->src1 = ssa_exp_(p->chd, cur, 0);
+                base->src2.kind = IMM;
+                base->src2.info.imm = p->ext.offset;
+            }
+            break;
+        case POSTFIX_PTR:
+            {
+                base->dest.kind = TMP;
+                base->dest.info.var = ctmp_create(rt);
+                base->op = (rt->type == CSTRUCT || rt->type == CUNION) ? ADD : ARR;
+                base->src1 = ssa_exp_(p->chd, cur, 0);
+                base->src2.kind = IMM;
+                base->src2.info.imm = p->ext.offset;
+            }
+            break;
+    }
+
+    if (lval)
+    {
+        lval->op = WARR;
+        lval->dest = base->src1;
+        lval->src2 = base->src2;
+        free(base);
+        return lval->dest;
+    }
+    cblock_append(cur, base);
+    return base->dest;
+}
+
+COpr ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval) {
     COpr res;
     CInst_t inst = NEW(CInst);
     switch (p->type)
@@ -177,6 +259,11 @@ COpr ssa_exp(CNode *p, CBlock_t cur) {
         case ID:
             res.kind = VAR;
             res.info.var = p->ext.var;
+            if (lval)
+            {
+                lval->op = MOVE;
+                lval->dest = res;
+            }
             break;
 
         default:
@@ -189,137 +276,216 @@ COpr ssa_exp(CNode *p, CBlock_t cur) {
             {
                 int op = p->rec.subtype;
                 int rec = 1, auto_dest = 1;
-                COpr lhs = ssa_exp(p->chd, cur), rhs;
-                if (p->chd->next)
-                    rhs = ssa_exp(p->chd->next, cur);
 
-                inst->src1 = lhs;
-                inst->src2 = rhs;
+                if (op == '=')
+                {
+                    inst->src1 = ssa_exp_(p->chd->next, cur, NULL);
+                    ssa_exp_(p->chd, cur, inst);
+                    cblock_append(cur, inst);
+                    if (inst->op == MOVE)
+                        return inst->dest;
+                    else
+                    {
+                        CInst_t tins = NEW(CInst);
+                        tins->op = ARR;
+                        tins->src1 = inst->dest;    /* base */
+                        tins->src2 = inst->src2;    /* displacement */
+                        tins->dest.kind = TMP;
+                        tins->dest.info.var = ctmp_create(p->ext.type);
+                        cblock_append(cur, tins);
+                        return tins->dest;
+                    }
+                }
+                else if (op == '*' && !p->chd->next)
+                {
+                    {
+                        if (lval)
+                        {
+                            lval->op = WARR;
+                            lval->dest = ssa_exp_(p->chd, cur, NULL);
+                            lval->src2.kind = IMM;
+                            lval->src2.info.imm = 0;
+                            return lval->dest;
+                        }
+                        else
+                        {
+                            inst->op = ARR;
+                            inst->src1 = ssa_exp_(p->chd, cur, NULL);
+                            inst->src2.kind = IMM;
+                            inst->src2.info.imm = 0;
+                            inst->dest.kind = TMP;
+                            inst->dest.info.var = ctmp_create(p->ext.type);
+                            cblock_append(cur, inst);
+                            return inst->dest;
+                        }
+                    }
+                }
+                else
+                {
+
+                    inst->op = -1;
+                    switch (op)
+                    {
+                        case ASS_MUL: inst->op = MUL; break;
+                        case ASS_DIV: inst->op = DIV; break;
+                        case ASS_MOD: inst->op = MOD; break;
+                        case ASS_ADD: inst->op = ADD; break;
+                        case ASS_SUB: inst->op = SUB; break;
+                        case ASS_SHL: inst->op = SHL; break;
+                        case ASS_SHR: inst->op = SHR; break;
+                        case ASS_AND: inst->op = AND; break;
+                        case ASS_XOR: inst->op = XOR; break;
+                        case ASS_OR:  inst->op = OR; break;
+                    }
+                    if (inst->op != -1)
+                    {
+                        CInst_t tins = NEW(CInst);
+                        ssa_exp_(p->chd, cur, tins);                 /* as lval */
+                        inst->src1 = ssa_exp_(p->chd, cur, NULL);    /* as rval */
+                        inst->src2 = ssa_exp_(p->chd->next, cur, NULL);
+                        if (tins->op == MOVE)
+                        {
+                            inst->dest = tins->dest;
+                            cblock_append(cur, inst);
+                            free(tins);
+                            return inst->dest;
+                        }
+                        else
+                        {
+                            CInst_t tins2 = NEW(CInst);
+                            inst->dest.kind = TMP;
+                            inst->dest.info.var = ctmp_create(p->ext.type);
+                            tins->src1 = inst->dest;
+                            tins2->op = ARR;
+                            tins2->src1 = tins->dest;    /* base */
+                            tins2->src2 = tins->src2;    /* displacement */
+                            tins2->dest.kind = TMP;
+                            tins2->dest.info.var = ctmp_create(p->ext.type);
+                            cblock_append(cur, inst);
+                            cblock_append(cur, tins);
+                            cblock_append(cur, tins2);
+                            return tins2->dest;
+                        }
+                    }
+                }
+
                 switch (op)
                 {
-                    case OPT_OR: inst->op = LOR; break;
-                    case OPT_AND: inst->op = LAND; break;
-                    case OPT_SHL: inst->op = SHL; break;
-                    case OPT_SHR: inst->op = SHR; break;
-                    case '|': inst->op = OR; break;
-                    case '^': inst->op = XOR; break;
-                    case OPT_EQ: inst->op = EQ; break;
-                    case OPT_NE: inst->op = NE; break;
-                    case '<': inst->op = LT; break;
-                    case '>': inst->op = GT; break;
-                    case OPT_LE: inst->op = LE; break;
-                    case OPT_GE: inst->op = GE; break;
-                    case '/': inst->op = DIV; break;
-                    case '%': inst->op = MOD; break;
-                    case '&':
-                              if (p->chd->next)
-                                  inst->op = AND;
-                              else
-                              {
-                                  rec = 0;
-                                  res.kind = IMM;
-                                  res.info.imm = 0;
-                                  /* TODO: be filled in with correct address */
-                              }
-                              break;
-                    case '*':
-                              if (p->chd->next)
-                                  inst->op = MUL;
-                              else
-                              {
-                                  inst->op = ARR;
-                                  inst->src1 = lhs;
-                                  inst->src2.kind = IMM;
-                                  inst->src2.info.imm = 0;
-                              }
-                              break;
-                    case '+':
-                              if (p->chd->next)
-                                  inst->op = ADD;
-                              else res = lhs;
-                              break;
-                    case '-':
-                              if (p->chd->next)
-                                  inst->op = SUB;
-                              else
-                              {
-                                  inst->op = NEG;
-                                  inst->src1 = lhs;
-                              }
-                              break;
-                    case '~':
-                              inst->op = NOR;
-                              inst->src1 = lhs;
-                              inst->src2.kind = IMM;
-                              inst->src2.info.imm = 0;
-                              break;
-                    case '!':
-                              inst->op = SEQ;
-                              inst->src1 = lhs;
-                              inst->src2.kind = IMM;
-                              inst->src2.info.imm = 0;
-                              break;
-                    case OPT_INC:
-                              auto_dest = 0;
-                              inst->op = ADD;
-                              inst->dest = lhs;
-                              inst->src1 = lhs;
-                              inst->src2.kind = IMM;
-                              inst->src2.info.imm = 1;
-                              break;
-                    case OPT_DEC:
-                              auto_dest = 0;
-                              inst->op = SUB;
-                              inst->dest = lhs;
-                              inst->src1 = lhs;
-                              inst->src2.kind = IMM;
-                              inst->src2.info.imm = 1;
-                              break;
+                    case EXP_CAST:
+                        free(inst);
+                        return ssa_exp_(p->chd->next, cur, lval);
+                    case EXP_POSTFIX:
+                        free(inst);
+                        return ssa_postfix(p, cur, lval);
+                    /* KW_SIZEOF is eliminated during semantic checking */
                     default:
-                              auto_dest = 0;
-                              if (op == '=')
-                              {
-                                  if (rhs.kind == VAR)
-                                  {
-                                      inst->op = MOVE;
-                                      inst->dest = lhs;
-                                      inst->src1 = rhs;
-                                      cblock_append(cur, inst);
-                                  }
-                                  else
-                                  {
-                                      inst = cblock_getback(cur);
-                                      inst->dest = lhs;
-                                  }
-                                  res = inst->dest;
-                                  break;
-                              }
-                              inst->dest = lhs;
-                              switch (op)
-                              {
-                                  case ASS_MUL: inst->op = MUL; break;
-                                  case ASS_DIV: inst->op = DIV; break;
-                                  case ASS_MOD: inst->op = MOD; break;
-                                  case ASS_ADD: inst->op = ADD; break;
-                                  case ASS_SUB: inst->op = SUB; break;
-                                  case ASS_SHL: inst->op = SHL; break;
-                                  case ASS_SHR: inst->op = SHR; break;
-                                  case ASS_AND: inst->op = AND; break;
-                                  case ASS_XOR: inst->op = XOR; break;
-                                  case ASS_OR:  inst->op = OR; break;
-                              }
-                }
-                if (rec)
-                {
-                    if (auto_dest)
-                    {
-                        inst->dest.kind = TMP;
-                        inst->dest.info.var = ctmp_create(p->ext.type);
-                    }
-                    cblock_append(cur, inst);
-                    res = inst->dest;
+                        {
+                            COpr lhs = ssa_exp_(p->chd, cur, lval), rhs;
+                            if (p->chd->next)
+                                rhs = ssa_exp_(p->chd->next, cur, lval);
+
+                            inst->src1 = lhs;
+                            inst->src2 = rhs;
+                            switch (op)
+                            {
+                                case OPT_OR: inst->op = LOR; break;
+                                case OPT_AND: inst->op = LAND; break;
+                                case OPT_SHL: inst->op = SHL; break;
+                                case OPT_SHR: inst->op = SHR; break;
+                                case '|': inst->op = OR; break;
+                                case '^': inst->op = XOR; break;
+                                case OPT_EQ: inst->op = EQ; break;
+                                case OPT_NE: inst->op = NE; break;
+                                case '<': inst->op = LT; break;
+                                case '>': inst->op = GT; break;
+                                case OPT_LE: inst->op = LE; break;
+                                case OPT_GE: inst->op = GE; break;
+                                case '/': inst->op = DIV; break;
+                                case '%': inst->op = MOD; break;
+                                case '&':
+                                          if (p->chd->next)
+                                              inst->op = AND;
+                                          else
+                                          {
+                                              rec = 0;
+                                              res.kind = IMM;
+                                              res.info.imm = 0;
+                                              /* TODO: be filled in with correct address */
+                                          }
+                                          break;
+                                case '*':
+                                          inst->op = MUL;
+                                          break;
+                                case '+':
+                                          if (p->chd->next)
+                                              inst->op = ADD;
+                                          else res = lhs;
+                                          break;
+                                case '-':
+                                          if (p->chd->next)
+                                              inst->op = SUB;
+                                          else
+                                          {
+                                              inst->op = NEG;
+                                              inst->src1 = lhs;
+                                          }
+                                          break;
+                                case '~':
+                                          inst->op = NOR;
+                                          inst->src1 = lhs;
+                                          inst->src2.kind = IMM;
+                                          inst->src2.info.imm = 0;
+                                          break;
+                                case '!':
+                                          inst->op = SEQ;
+                                          inst->src1 = lhs;
+                                          inst->src2.kind = IMM;
+                                          inst->src2.info.imm = 0;
+                                          break;
+                                case OPT_INC:
+                                          auto_dest = 0;
+                                          inst->op = ADD;
+                                          inst->dest = lhs;
+                                          inst->src1 = lhs;
+                                          inst->src2.kind = IMM;
+                                          inst->src2.info.imm = 1;
+                                          break;
+                                case OPT_DEC:
+                                          auto_dest = 0;
+                                          inst->op = SUB;
+                                          inst->dest = lhs;
+                                          inst->src1 = lhs;
+                                          inst->src2.kind = IMM;
+                                          inst->src2.info.imm = 1;
+                                          break;
+                                default:
+                                          auto_dest = 0;
+                            }
+                            if (rec)
+                            {
+                                if (auto_dest)
+                                {
+                                    inst->dest.kind = TMP;
+                                    inst->dest.info.var = ctmp_create(p->ext.type);
+                                }
+                                cblock_append(cur, inst);
+                                res = inst->dest;
+                            }
+                        }
                 }
             }
+    }
+    return res;
+}
+
+COpr ssa_exp(CNode *p, CBlock_t cur) {
+    COpr res = ssa_exp_(p, cur, NULL);
+    CInst_t last = cblock_getback(cur);
+    if (last->dest.kind == TMP) /* temporary not used */
+    {
+        ctmp_destroy(last->dest.info.var);
+        free(last);
+        cblock_popback(cur);
     }
     return res;
 }

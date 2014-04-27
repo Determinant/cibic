@@ -8,7 +8,7 @@ for file in $dir
 do
     gcc $file -o /dev/null &> /dev/null
     gcc_ret="$?"
-    ./cibic $file &> /dev/null
+    ./cibic --sem $file &> /dev/null
     ret=$?
     if [ $ret -ne $gcc_ret ]; then
         echo "Failed on $file"

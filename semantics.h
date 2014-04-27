@@ -14,14 +14,14 @@ typedef struct CDef CDef;
 typedef CDef *CDef_t;
 
 struct CVar {
-    const char *name;
+    char *name;
     CVar_t next;    /* next in the linked list */
     CType_t type;
     int start;
     CNode *ast;
 };
 
-CVar_t cvar_create(const char *name, CType_t type, CNode *ast);
+CVar_t cvar_create(char *name, CType_t type, CNode *ast);
 void cvar_print(CVar_t cv);
 
 struct CType {
@@ -35,7 +35,7 @@ struct CType {
         CPTR,
         CFUNC
     } type;
-    const char *name;
+    char *name;
     union {
         struct {
             CTable_t fields; /* for a struct or union */
@@ -57,7 +57,7 @@ struct CType {
     CNode *ast;
 };
 
-CType_t ctype_create(const char *name, int type, CNode *ast);
+CType_t ctype_create(char *name, int type, CNode *ast);
 void ctype_debug_print(CType_t ct);
 
 typedef unsigned int (*Hashfunc_t) (const char *);
@@ -157,10 +157,11 @@ enum DefState{
 };
 
 int is_identifier(const char *name);
-void push(const char *name);
+void push(char *name);
 void cibic_init(void);
 void block_enter(void);
 void block_exit(void);
 void def_enter(enum DefState kind);
 void def_exit(void);
+int calc_size(CType_t type);
 #endif

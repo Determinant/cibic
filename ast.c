@@ -33,7 +33,6 @@ CNode *cnode_create_nop() {
     CNode *nop = NEW_CNODE;
     nop->type = NOP;
     nop->next = nop->chd = NULL;
-    nop->ext.type = NULL;
     return nop;
 }
 
@@ -44,6 +43,7 @@ CNode *cnode_create_general(int type, int subtype, int pnum, va_list ap) {
     exp->rec.subtype = subtype;
     exp->next = exp->chd = NULL;
     exp->ext.type = NULL;
+    exp->ext.offset = 0;
     for (i = 0; i < pnum; i++)
     {
         CNode *subexp = va_arg(ap, CNode*);
@@ -72,6 +72,7 @@ CNode *cnode_create_identifier(char *val) {
     exp->chd = exp->next = NULL;
     exp->rec.strval = val;
     exp->ext.type = NULL;
+    exp->ext.offset = 0;
     return exp;
 }
 
@@ -402,7 +403,7 @@ char *cnode_debug_type_repr(CNode *ast) {
         if (ast->ext.type)
         sprintf(head, "->(var:%lx type:%lx ic:%d cv:%d off:%d)",
                 (size_t)ast->ext.var, (size_t)ast->ext.type,
-                ast->ext.is_const, ast->ext.const_val, ast->ext.offest);
+                ast->ext.is_const, ast->ext.const_val, ast->ext.offset);
     }
     return buffer;
 }

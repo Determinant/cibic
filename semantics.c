@@ -256,7 +256,7 @@ unsigned int bkdr_hash(const char *str) {
     return hv;
 }
 
-CVar_t cvar_create(const char *name, CType_t type, CNode *ast) {
+CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     CVar_t cv = NEW(CVar);
     cv->name = name;
     cv->type = type;
@@ -264,7 +264,7 @@ CVar_t cvar_create(const char *name, CType_t type, CNode *ast) {
     return cv;
 }
 
-CType_t ctype_create(const char *name, int type, CNode *ast) {
+CType_t ctype_create(char *name, int type, CNode *ast) {
     CType_t ct = NEW(CType);
     ct->name = name;
     ct->type = type;
@@ -296,8 +296,8 @@ int calc_size(CType_t type) {
                 if (!p) return -1;
                 for (; p; p = p->next)
                 {
-                    size += align_shift(calc_size(p->type));
                     p->start = size;
+                    size += align_shift(calc_size(p->type));
                 }
             }
             break;
@@ -745,6 +745,7 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
 
 ExpType exp_check_aseq(ExpType lhs, ExpType rhs, CNode *ast) {
     exp_check_aseq_(lhs.type, rhs.type, ast);
+    lhs.lval = 0;
     return lhs;
 }
 
@@ -875,7 +876,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
             *a = &(p->ext.const_val);
         if (t1 == CARR)
         {
-            int l = p->chd->ext.offest;
+            int l = p->chd->ext.offset;
             CType_t type;
             p->ext.var = p->chd->ext.var;
             if (t1 == CPTR) type = op1.type->rec.ref;
@@ -883,8 +884,8 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
             r *= calc_size(type);
             switch (kind)
             {
-                case '+': p->ext.offest = l + r; break;
-                case '-': p->ext.offest = l - r; break;
+                case '+': p->ext.offset = l + r; break;
+                case '-': p->ext.offset = l - r; break;
             }
         }
         else
@@ -967,6 +968,7 @@ ExpType exp_check_inc(ExpType op1, CNode *p) {
         ERROR((p, "wrong type argument to increment/decrement"));
     if (!op1.lval)
         ERROR((p, "lvalue required as increment/decrement operand"));
+    op1.lval = 0;
     return op1;
 }
 
@@ -1081,7 +1083,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 if ((p->ext.is_const = p->chd->ext.is_const && \
                                         post->chd->ext.is_const))
                 {
-                    p->ext.offest = p->chd->ext.offest + \
+                    p->ext.offset = p->chd->ext.offset + \
                                     calc_size(op1.type) * post->chd->ext.const_val;
                     p->ext.var = p->chd->ext.var;
                 }
@@ -1122,7 +1124,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 if (!fv)
                     ERROR((p, "struct/union has no member named '%s'", post->chd->rec.strval));
                 p->ext.var = NULL;
-                p->ext.offest = fv->start;
+                p->ext.offset = fv->start;
                 op1.type = fv->type;
             }
             break;
@@ -1135,17 +1137,19 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                     ERROR((p, "request for the member in something not a structure or union"));
                 if (!tref->rec.st.fields)
                     ERROR((p, "dereferencing pointer to incomplete type"));
+                calc_size(tref);
                 CVar_t fv = ctable_lookup(tref->rec.st.fields,
                                         post->chd->rec.strval);
                 if (!fv)
                     ERROR((p, "struct/union has no member named '%s'", post->chd->rec.strval));
                 p->ext.var = fv;
+                p->ext.offset = fv->start;
                 op1.type = fv->type;
                 op1.lval = 1;
             }
             break;
         case OPT_INC: case OPT_DEC:
-            exp_check_inc(op1, p);
+            op1 = exp_check_inc(op1, p);
             break;
         default: assert(0);
     }
@@ -1515,7 +1519,7 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
     return func;
 }
 
-CType_t make_builtin_func(const char *name, CType_t rt) {
+CType_t make_builtin_func(char *name, CType_t rt) {
     CType_t func = ctype_create(name, CFUNC, NULL);
     func->rec.func.params = NULL;
     func->rec.func.body = NULL;
@@ -1552,7 +1556,7 @@ int is_identifier(const char *name) {
     return lu->kind == CVAR;
 }
 
-void push(const char *name) {
+void push(char *name) {
     if (typedef_stack && typedef_stack->kind == IN_TYPEDEF)
         cscope_push_type(typedef_scope, ctype_create(name, 0, NULL), NS_ID);
     else
