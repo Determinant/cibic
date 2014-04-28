@@ -90,7 +90,7 @@ char ([^\n'\\]|\\.|\\[0-7]+|\\[xX][0-9a-fA-F]+)
 }
 
 '{char}' {
-    yylval.strval = strdup(yytext);
+    yylval.strval = strndup(yytext + 1, strlen(yytext) - 2);
     return CHAR_CONST;
 }
 

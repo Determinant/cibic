@@ -94,6 +94,8 @@ void copr_print(COpr *opr) {
                   break;
         case IMM: fprintf(stderr, "%d", opr->info.imm);
                   break;
+        case IMMS: fprintf(stderr, "\"%s\"", opr->info.str);
+                  break;
     }
 }
 
@@ -253,7 +255,7 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
             {
                 base->dest.kind = TMP;
                 base->dest.info.var = ctmp_create(rt);
-                base->op = (rt->type == CSTRUCT || rt->type == CUNION) ? ADD : ARR;
+                base->op = ARR;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2.kind = IMM;
                 base->src2.info.imm = p->ext.offset;
@@ -263,7 +265,7 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
             {
                 base->dest.kind = TMP;
                 base->dest.info.var = ctmp_create(rt);
-                base->op = (rt->type == CSTRUCT || rt->type == CUNION) ? ADD : ARR;
+                base->op = ARR;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2.kind = IMM;
                 base->src2.info.imm = p->ext.offset;
@@ -272,6 +274,7 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
         case POSTFIX_CALL:
             {
                 CNode *arg = post->chd->chd;
+                CInst_t ps = NULL, t;
                 base->op = CALL;
                 base->src1 = ssa_exp_(p->chd, cur, lval, succ);
                 base->dest.kind = TMP;
@@ -281,7 +284,13 @@ COpr ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     CInst_t pi = NEW(CInst);
                     pi->op = PUSH;
                     pi->src1 = ssa_exp_(arg, cur, lval, succ);
-                    cblock_append(cur, pi);
+                    pi->next = ps;
+                    ps = pi;
+                }
+                for (; ps; ps = t)
+                {
+                    t = ps->next;
+                    cblock_append(cur, ps);
                 }
             }
             break;
@@ -347,6 +356,10 @@ COpr ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 lval->op = MOVE;
                 lval->dest = res;
             }
+            break;
+        case STR:
+            res.kind = IMMS;
+            res.info.str = p->rec.strval;
             break;
 
         default:

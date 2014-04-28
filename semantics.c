@@ -493,7 +493,7 @@ CVar_t semantics_pdecl(CNode *p, CScope_t scope) {
 CVar_t semantics_params(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, PARAMS);
     static CVar dummy;
-    CVar_t params = NULL;
+    CVar_t params = &dummy, tail = params;
     CTable_t ct;
     if (!(p = p->chd)) return NULL; /* no parameters */
     ct = ctable_create(bkdr_hash, ctable_cvar_print);
@@ -504,16 +504,12 @@ CVar_t semantics_params(CNode *p, CScope_t scope) {
         if (scope)  /* params inside a function definition */
             if (!ctable_insert(ct, var->name, var, 0))
                 ERROR((var->ast, "redefinition of parameter '%s'", var->name));
-        var->next = params;
-        params = var;
-        /*
         tail->next = var;
         tail = var;
-        */
     }
     ctable_destory(ct);
-    /* tail->next = NULL; */
-    return params;
+    tail->next = NULL;
+    return params->next;
 }
 
 ExpType semantics_exp(CNode *, CScope_t);
@@ -1196,7 +1192,49 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
             res.type = basic_type_char;
             res.lval = 0;
             p->ext.is_const = 1;
-            p->ext.const_val = p->rec.intval;
+            {
+                char *val = p->rec.strval;
+                int intval;
+                int len = strlen(val);
+                if (*val == '\\')
+                {
+                    if (len == 2)
+                        switch (val[1])
+                        {
+                            case 'a': intval = '\a'; break;
+                            case 'b': intval = '\b'; break;
+                            case 'f': intval = '\f'; break;
+                            case 'n': intval = '\n'; break;
+                            case 'r': intval = '\r'; break;
+                            case 't': intval = '\t'; break;
+                            case 'v': intval = '\v'; break;
+                            case '\\': intval = '\\'; break;
+                            case '\'': intval = '\''; break;
+                            case '"': intval = '\"'; break;
+                            case '\?': intval = '\?'; break;
+                            case '0': intval = '\0'; break;
+                            default:
+                                ERROR((p, "unknown escape sequence"));
+                        }
+                    else
+                    {
+                        switch (val[1])
+                        {
+                            case '0':
+                                sscanf(val + 2, "%o", &intval);
+                                break;
+                            case 'x':
+                                sscanf(val + 2, "%x", &intval);
+                                break;
+                            default:
+                                ERROR((p, "unknown escape sequence"));
+                        }
+                    }
+                }
+                else
+                    intval = *val;
+                p->ext.const_val = intval;
+            }
             break;
         case STR:
             {

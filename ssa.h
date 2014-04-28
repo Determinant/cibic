@@ -6,11 +6,13 @@ typedef struct COpr {
     enum {
         VAR,
         TMP,
-        IMM
+        IMM,
+        IMMS
     } kind;
     union {
         CVar_t var;
         int imm;
+        char *str;
     } info;
 } COpr;
 
