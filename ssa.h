@@ -2,7 +2,9 @@
 #define SSA_H
 #include "const.h"
 #include "semantics.h"
-typedef struct COpr {
+typedef struct COpr COpr;
+typedef COpr *COpr_t;
+struct COpr {
     enum {
         VAR,
         TMP,
@@ -14,7 +16,7 @@ typedef struct COpr {
         int imm;
         char *str;
     } info;
-} COpr;
+};
 
 typedef struct CInst CInst;
 typedef CInst *CInst_t;
@@ -34,13 +36,27 @@ struct CInst {
         LOR, LAND, NEG, NOR, SEQ,
         EQ, NE, LT, GT, LE, GE
     } op;
-    COpr dest, src1, src2;
+    COpr_t dest, src1, src2;
     CInst_t next, prev;
+};
+
+typedef struct COprList COprList;
+typedef COprList *COprList_t;
+struct COprList {
+    COpr opr;
+    COprList_t next;
+};
+typedef struct CPhi CPhi;
+typedef CPhi *CPhi_t;
+struct CPhi {
+    COpr dest;
+    COprList_t params;
 };
 
 typedef struct CBlock CBlock;
 typedef CBlock *CBlock_t;
 struct CBlock {
+    CPhi_t phis;
     CInst_t insts;  /* instructions */
     CBlock_t next, prev;
     int id;
