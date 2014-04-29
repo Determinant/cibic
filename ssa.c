@@ -15,10 +15,14 @@ static int gbbase;
 
 CBlock_t cblock_create() {
     CBlock_t cblk = NEW(CBlock);
-    CInst_t dummy = NEW(CInst);
-    dummy->prev = dummy;
-    dummy->next = dummy;
-    cblk->insts = dummy;
+    CInst_t dum = NEW(CInst);
+    CPhi_t pdum = NEW(CPhi);
+    dum->prev = dum;
+    dum->next = dum;
+    pdum->prev = pdum;
+    pdum->next = pdum;
+    cblk->insts = dum;
+    cblk->phis = pdum;
     cblk->next = NULL;
     cblk->id = (bcnt++) + gbbase;
     cblk->ref = 0;
@@ -29,6 +33,12 @@ void cblock_append(CBlock_t cblk, CInst_t inst) {
     CInst_t head = cblk->insts;
     (inst->prev = head->prev)->next = inst;
     (inst->next = head)->prev = inst;
+}
+
+void cblock_pappend(CBlock_t cblk, CPhi_t phi) {
+    CPhi_t head = cblk->phis;
+    (phi->prev = head->prev)->next = phi;
+    (phi->next = head)->prev = phi;
 }
 
 void cblock_popback(CBlock_t cblk) {
@@ -153,8 +163,12 @@ void cinst_print(CInst_t inst) {
             copr_print(inst->src1);
             break;
         case RET:
-            fprintf(stderr, "return ");
-            copr_print(inst->src1);
+            if (inst->src1)
+            {
+                fprintf(stderr, "return ");
+                copr_print(inst->src1);
+            }
+            else fprintf(stderr, "return");
             break;
         default:
             {
@@ -195,7 +209,7 @@ void cinst_print(CInst_t inst) {
 
 void cblock_print(CBlock_t blk) {
     CInst_t p, sp = blk->insts;
-    if (blk->ref)
+    /*if (blk->ref)*/
         fprintf(stderr, "_L%d:\n", blk->id);
     for (p = sp->next; p != sp; p = p->next)
     {
@@ -442,7 +456,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 else
                 {
                     int unary = 0;
-                    inst->op = -1;
+                    inst->op = (unsigned)-1;
                     switch (op)
                     {
                         case ASS_MUL: inst->op = MUL; break;
@@ -458,7 +472,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                         case OPT_INC: inst->op = ADD; unary = 1; break;
                         case OPT_DEC: inst->op = SUB; unary = 1; break;
                     }
-                    if (inst->op != -1)
+                    if (inst->op != (unsigned)-1)
                     {
                         CInst_t tins = NEW(CInst);
                         ssa_exp_(p->chd, cur, tins, succ);                 /* as lval */
@@ -780,7 +794,10 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
 CBlock_t ssa_ret(CNode *p, CBlock_t cur) {
     CInst_t inst = NEW(CInst);
     inst->op = RET;
-    inst->src1 = ssa_exp(p->chd, cur, 0);
+    if (p->chd->type != NOP)
+        inst->src1 = ssa_exp(p->chd, cur, 0);
+    else
+        inst->src1 = NULL;
     cblock_append(cur, inst);
     return cur;
 }
@@ -846,9 +863,78 @@ CBlock_t ssa_comp(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     return cur;
 }
 
-CBlock_t ssa_func(CType_t func) {
-    CBlock_t start = cblock_create();
-    ssa_comp(func->rec.func.body, start, NULL);
-    return start;
+CPSet_t cpset_create() {
+    CPSet_t res = NEW(CPSet);
+    memset(res->head, 0, sizeof res->head);
+    return res;
 }
 
+void cpset_insert(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    CPNode *p = cps->head[hv], *np;
+    for (; p; p = p->next)
+        if (p->key == key)
+            return;
+    np = NEW(CPNode);
+    np->key = key;
+    np->next = cps->head[hv];
+    cps->head[hv] = np;
+}
+
+CBlock_t ssa_func(CType_t func) {
+    CBlock_t start = cblock_create(), p;
+    CPSet_t vars = cpset_create();
+    cfg_clear();
+    ssa_comp(func->rec.func.body, start, NULL);
+    for (p = start; p; p = p->next)
+    {
+        CInst_t head = p->insts, i;
+        for (i = head->next; i != head; i = i->next)
+        {
+            switch (i->op)
+            {
+                case BEQZ: case BNEZ: case GOTO:
+                case PUSH: case RET:
+                case WARR:
+                    ; break;
+                default:
+                    {
+                        CVar_t d = i->dest->info.var;
+                        CBList_t b = NEW(CBList);
+                        cpset_insert(vars, (long)d);
+                        b->next = d->defsite;
+                        b->cblk = p;
+                        d->defsite = b;
+                    }
+            }
+        }
+        blks[p->id] = p;
+    }
+    {
+        int i;
+        CPNode *p;
+        for (i = 0; i < MAX_TABLE_SIZE; i++)
+            for (p = vars->head[i]; p; p = p->next)
+            {
+                CVar_t var = (CVar_t)p->key;
+                CBList_t t = var->defsite;
+                CBList_t def = NULL;
+                static int indef[MAX_BLOCK];
+                fprintf(stderr, "%s:", var->name);
+                for (t = var->defsite; t; t = t->next)
+                    if (++indef[t->cblk->id] == 1)
+                    {
+                        CBList_t p = NEW(CBList);
+                        p->cblk = t->cblk;
+                        p->next = def;
+                        def = p;
+                    }
+                for (t = var->defsite; t; t = t->next)
+                    indef[t->cblk->id] = 0; /* clear */
+                for (t = def; t; t = t->next)
+                    fprintf(stderr, " %d", t->cblk->id);
+                fprintf(stderr, "\n");
+            }
+    } 
+    return start;
+}

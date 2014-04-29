@@ -13,12 +13,14 @@ typedef CSymbol *CSymbol_t;
 typedef struct CDef CDef;
 typedef CDef *CDef_t;
 
+typedef struct CBList *CBList_t;
 struct CVar {
     char *name;
     CVar_t next;    /* next in the linked list */
     CType_t type;
     int start;
     CNode *ast;
+    CBList_t defsite;
 };
 
 CVar_t cvar_create(char *name, CType_t type, CNode *ast);

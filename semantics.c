@@ -126,8 +126,7 @@ void *ctable_lookup(CTable_t ct, const char *key) {
 
 int ctable_insert(CTable_t ct, const char *key, void *val, int lvl) {
     unsigned int hv = ct->hfunc(key) % MAX_TABLE_SIZE;
-    CTNode *p = ct->head[hv];
-    CTNode *np;
+    CTNode *p = ct->head[hv], *np;
     for (; p && p->lvl == lvl; p = p->next)
         if (!strcmp(p->key, key))
             return 0; /* conflict */
@@ -261,6 +260,7 @@ CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     cv->name = name;
     cv->type = type;
     cv->ast = ast;
+    cv->defsite = NULL;
     return cv;
 }
 
