@@ -13,7 +13,7 @@ static int bcnt;        /* block counter */
 static int tcnt;        /* temporary counter */
 static int gbbase;
 
-CBlock_t cblock_create() {
+CBlock_t cblock_create(int inc) {
     CBlock_t cblk = NEW(CBlock);
     CInst_t dum = NEW(CInst);
     CPhi_t pdum = NEW(CPhi);
@@ -24,7 +24,8 @@ CBlock_t cblock_create() {
     cblk->insts = dum;
     cblk->phis = pdum;
     cblk->next = NULL;
-    cblk->id = (bcnt++) + gbbase;
+    if (inc)
+        cblk->id = bcnt++;
     cblk->ref = 0;
     return cblk;
 }
@@ -76,24 +77,33 @@ void ctmp_destroy(CVar_t type) {
 void cfg_clear() {
     int i;
     for (i = 0; i < MAX_BLOCK; i++)
-        if (cfg.head[i])
+    {
+        CEdge *p, *np;
+        for (p = cfg.head[i]; p; p = np)
         {
-            CEdge *p, *np;
-            for (p = cfg.head[i]; p; p = np)
-            {
-                np = p->next;
-                free(p);
-            }
-            cfg.head[i] = NULL;
+            np = p->next;
+            free(p);
         }
+        cfg.head[i] = NULL;
+        for (p = cfg.rhead[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+        cfg.rhead[i] = NULL;
+    }
 }
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
-    int id = from->id;
-    CEdge *e = NEW(CEdge);
+    int fid = from->id, tid = to->id;
+    CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
-    e->next = cfg.head[id];
-    cfg.head[id] = e;
+    e->next = cfg.head[fid];
+    cfg.head[fid] = e;
+
+    re->to = from;
+    re->next = cfg.rhead[tid];
+    cfg.rhead[tid] = re;
 }
 
 void copr_print(COpr_t opr) {
@@ -210,7 +220,7 @@ void cinst_print(CInst_t inst) {
 void cblock_print(CBlock_t blk) {
     CInst_t p, sp = blk->insts;
     /*if (blk->ref)*/
-        fprintf(stderr, "_L%d:\n", blk->id);
+        fprintf(stderr, "_L%d:\n", blk->id + gbbase);
     for (p = sp->next; p != sp; p = p->next)
     {
         fprintf(stderr, "\t");
@@ -611,7 +621,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
 }
 
 COpr_t ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
-    CBlock_t succ = cblock_create();
+    CBlock_t succ = cblock_create(0);
     COpr_t res = ssa_exp_(p, cur, NULL, succ);
     CInst_t last; 
     {
@@ -639,9 +649,9 @@ COpr_t ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
 CBlock_t ssa_stmt(CNode *, CBlock_t, CBlock_t);
 CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     CNode *exp = p->chd;
-    CBlock_t loop_blk = cblock_create(), loop_t,
-             cond_blk = cblock_create(),
-             next_blk = cblock_create();
+    CBlock_t loop_blk = cblock_create(1), loop_t,
+             cond_blk = cblock_create(1),
+             next_blk = cblock_create(1);
     CInst_t j_inst = NEW(CInst),
             if_inst = NEW(CInst);
 
@@ -680,9 +690,9 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     CNode *exp1 = p->chd,
           *exp2 = exp1->next,
           *exp3 = exp2->next;
-    CBlock_t loop_blk = cblock_create(), loop_t,
-             cond_blk = cblock_create(),
-             next_blk = cblock_create();
+    CBlock_t loop_blk = cblock_create(1), loop_t,
+             cond_blk = cblock_create(1),
+             next_blk = cblock_create(1);
     CInst_t j_inst = NEW(CInst),
             if_inst = NEW(CInst);
 
@@ -722,7 +732,7 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
 CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     CNode *body1 = p->chd->next,
           *body2 = body1->next;
-    CBlock_t then_blk = cblock_create(), then_t,
+    CBlock_t then_blk = cblock_create(1), then_t,
              next_blk,
              else_blk, else_t;
     CInst_t if_inst = NEW(CInst);
@@ -753,7 +763,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
         j_inst->dest = NEW(COpr);
         j_inst->dest->kind = IMM;
 
-        else_blk = cblock_create();
+        else_blk = cblock_create(1);
         if_inst->dest->info.imm = else_blk->id;
         else_blk->ref = 1;
         DBLINK(then_t, else_blk);
@@ -762,7 +772,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
             next_blk = else_t;
         else
         {
-            next_blk = cblock_create();
+            next_blk = cblock_create(1);
             DBLINK(else_t, next_blk);
         }
 
@@ -780,7 +790,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
             next_blk = then_t;
         else
         {
-            next_blk = cblock_create();
+            next_blk = cblock_create(1);
             DBLINK(then_t, next_blk);
         }
         cfg_add_edge(cur, next_blk);
@@ -869,6 +879,19 @@ CPSet_t cpset_create() {
     return res;
 }
 
+void cpset_destory(CPSet_t cps) {
+    int i;
+    for (i = 0; i < MAX_TABLE_SIZE; i++)
+    {
+        CPNode *p, *np;
+        for (p = cps->head[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+    }
+}
+
 void cpset_insert(CPSet_t cps, long key) {
     unsigned int hv = key % MAX_TABLE_SIZE;
     CPNode *p = cps->head[hv], *np;
@@ -881,12 +904,116 @@ void cpset_insert(CPSet_t cps, long key) {
     cps->head[hv] = np;
 }
 
+int cpset_belongs(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    CPNode *p = cps->head[hv];
+    for (; p; p = p->next)
+        if (p->key == key)
+            return 1;
+    return 0;
+}
+
+int dom[MAX_BLOCK], ord[MAX_BLOCK], vis[MAX_BLOCK], par[MAX_BLOCK], ocnt;
+CPSet_t dfset[MAX_BLOCK];
+CBList_t df[MAX_BLOCK];
+
+void dfs(CBlock_t u, int v) {
+    CEdge *e;
+    if (vis[u->id] != -1) return;
+    par[u->id] = v;
+    vis[u->id] = 0;
+    for (e = cfg.head[u->id]; e; e = e->next)
+        dfs(e->to, u->id);
+    vis[u->id] = ocnt;
+    ord[ocnt++] = u->id;
+}
+
+int intersect(int b1, int b2) {
+    while (b1 != b2)
+        if (b1 < b2) b1 = dom[b1];
+        else b2 = dom[b2];
+    return b1;
+}
+
+void calc_dominant_frontier(CBlock_t entry) {
+    int i;
+    int ch = 1;
+    ocnt = 0;
+    memset(vis, -1, sizeof vis);
+    memset(dom, -1, sizeof dom);
+    dfs(entry, -1);
+    dom[vis[entry->id]] = vis[entry->id];
+    while (ch)
+    {
+        int i;
+        ch = 0;
+        for (i = bcnt - 2; i >= 0; i--)
+        {
+            int id = ord[i];
+            CEdge *e = cfg.rhead[id];
+            int new_idom = vis[par[id]];
+            for (; e; e = e->next)
+            {
+                int p = e->to->id;
+                if (vis[p] == new_idom) continue;
+                if (dom[vis[p]] != -1)
+                    new_idom = intersect(vis[p], new_idom);
+            }
+            if (dom[i] != new_idom)
+            {
+                ch = 1;
+                dom[i] = new_idom;
+            }
+        }
+    }
+    for (i = 0; i < bcnt; i++)
+    {
+        CBList_t p, np;
+        for (p = df[i]; p; p = np)
+        {
+            free(p);
+            np = p->next;
+        }
+        df[i] = NULL;
+        if (dfset[i]) cpset_destory(dfset[i]);
+        dfset[i] = cpset_create();
+    }
+    for (i = 0; i < bcnt; i++)
+        if (cfg.rhead[i] && cfg.rhead[i]->next)
+        {
+            CEdge *p = cfg.rhead[i];
+            for (; p; p = p->next)
+            {
+                int runner = p->to->id;
+                while (vis[runner] != dom[vis[i]])
+                {
+                    if (!cpset_belongs(dfset[runner], i))
+                    {
+                        CBList_t np = NEW(CBList);
+                        np->cblk = blks[i];
+                        np->next = df[runner];
+                        cpset_insert(dfset[runner], i);
+                        df[runner] = np;
+                    }
+                    runner = ord[dom[vis[runner]]];
+                }
+            }
+        }
+    for (i = 0; i < bcnt; i++)
+    {
+        CBList_t p = df[i];
+        printf("%d: ", i);
+        for (; p; p = p->next)
+            printf("%d ", p->cblk->id); puts("");
+    }
+}
+
 CBlock_t ssa_func(CType_t func) {
-    CBlock_t start = cblock_create(), p;
+    CBlock_t entry = cblock_create(1), p;
     CPSet_t vars = cpset_create();
     cfg_clear();
-    ssa_comp(func->rec.func.body, start, NULL);
-    for (p = start; p; p = p->next)
+    ssa_comp(func->rec.func.body, entry, NULL);
+    for (p = entry; p; p = p->next)
     {
         CInst_t head = p->insts, i;
         for (i = head->next; i != head; i = i->next)
@@ -910,17 +1037,20 @@ CBlock_t ssa_func(CType_t func) {
         }
         blks[p->id] = p;
     }
+    calc_dominant_frontier(entry);
     {
         int i;
         CPNode *p;
         for (i = 0; i < MAX_TABLE_SIZE; i++)
             for (p = vars->head[i]; p; p = p->next)
-            {
+            { /* for each variable */
                 CVar_t var = (CVar_t)p->key;
                 CBList_t t = var->defsite;
                 CBList_t def = NULL;
                 static int indef[MAX_BLOCK];
+#ifdef CIBIC_DEBUG
                 fprintf(stderr, "%s:", var->name);
+#endif
                 for (t = var->defsite; t; t = t->next)
                     if (++indef[t->cblk->id] == 1)
                     {
@@ -931,10 +1061,18 @@ CBlock_t ssa_func(CType_t func) {
                     }
                 for (t = var->defsite; t; t = t->next)
                     indef[t->cblk->id] = 0; /* clear */
+#ifdef CIBIC_DEBUG
                 for (t = def; t; t = t->next)
                     fprintf(stderr, " %d", t->cblk->id);
                 fprintf(stderr, "\n");
+#endif
+                while (def) /* while def not empty */
+                {
+                    CBList_t n = def; /* remove some node n from def */
+                    def = def->next;
+
+                }
             }
     } 
-    return start;
+    return entry;
 }

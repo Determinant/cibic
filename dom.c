@@ -105,7 +105,7 @@ int main() {
             for (; e; e = e->next)
             {
                 int p = e->to;
-                if (p == new_idom) continue;
+                if (vis[p] == new_idom) continue;
                 if (dom[vis[p]] != -1)
                     new_idom = intersect(vis[p], new_idom);
             }

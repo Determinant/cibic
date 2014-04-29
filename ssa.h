@@ -65,7 +65,7 @@ struct CBList {
     CBList_t next;
 };
 
-CBlock_t cblock_create();
+CBlock_t cblock_create(int inc);
 void cblock_append(CBlock_t cblk, CInst_t inst);
 void cblock_pappend(CBlock_t cblk, CPhi_t phi);
 CInst_t cblock_getback(CBlock_t cblk);
@@ -90,6 +90,7 @@ typedef CPSet *CPSet_t;
 
 CPSet_t cpset_create();
 void cpset_insert(CPSet_t cps, long key);
+int cpset_belongs(CPSet_t cps, long key);
 
 void ssa_generate(CScope_t scope);
 #endif
