@@ -14,6 +14,7 @@ typedef struct CDef CDef;
 typedef CDef *CDef_t;
 
 typedef struct CBList *CBList_t;
+typedef struct COList *COList_t;
 struct CVar {
     char *name;
     CVar_t next;    /* next in the linked list */
@@ -21,6 +22,9 @@ struct CVar {
     int start;
     CNode *ast;
     CBList_t defsite;
+    /* the following fields are used for renaming */
+    int cnt;
+    COList_t stack;
 };
 
 CVar_t cvar_create(char *name, CType_t type, CNode *ast);

@@ -2,6 +2,10 @@
 #define SSA_H
 #include "const.h"
 #include "semantics.h"
+
+typedef struct CInst CInst;
+typedef CInst *CInst_t;
+
 typedef struct COpr COpr;
 typedef COpr *COpr_t;
 struct COpr {
@@ -16,10 +20,17 @@ struct COpr {
         int imm;
         char *str;
     } info;
+    int sub;
+    CInst_t def;
 };
 
-typedef struct CInst CInst;
-typedef CInst *CInst_t;
+typedef struct COList COList;
+typedef COList *COList_t;
+struct COList {
+    COpr_t opr;
+    COList_t next;
+};
+
 struct CInst {
     enum {
         BEQZ,   /* conditional jump */
@@ -56,6 +67,7 @@ struct CBlock {
     CBlock_t next, prev;
     int id;
     int ref;        /* if referenced by any gotos */
+    int pred;       /* the number of predecessors */
 };
 
 typedef struct CBList CBList;
@@ -63,6 +75,13 @@ typedef CBList *CBList_t;
 struct CBList {
     CBlock_t cblk;
     CBList_t next;
+};
+
+typedef struct CVList CVList;
+typedef CVList *CVList_t;
+struct CVList {
+    CVar_t var;
+    CVList_t next;
 };
 
 CBlock_t cblock_create(int inc);

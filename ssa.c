@@ -7,7 +7,7 @@
 #define NEW(type) ((type *)malloc(sizeof(type)))
 #define DBLINK(from, to) ((from)->next = (to))->prev = (from)
 
-static CGraph cfg;
+static CGraph cfg, dtree;
 static CBlock_t blks[MAX_BLOCK];
 static int bcnt;        /* block counter */
 static int tcnt;        /* temporary counter */
@@ -94,8 +94,23 @@ void cfg_clear() {
     }
 }
 
+void dtree_clear() {
+    int i;
+    for (i = 0; i < MAX_BLOCK; i++)
+    {
+        CEdge *p, *np;
+        for (p = dtree.head[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+        dtree.head[i] = NULL;
+    }
+}
+
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
+    printf("%d -> %d\n", from->id, to->id);
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -106,10 +121,20 @@ void cfg_add_edge(CBlock_t from, CBlock_t to) {
     cfg.rhead[tid] = re;
 }
 
+void dtree_add_edge(CBlock_t from, CBlock_t to) {
+    int id = from->id;
+    CEdge *e = NEW(CEdge);
+    e->to = to;
+    e->next = dtree.head[id];
+    dtree.head[id] = e;
+}
+
 void copr_print(COpr_t opr) {
     switch (opr->kind)
     {
         case VAR: 
+                  fprintf(stderr, "%s_%d", opr->info.var->name, opr->sub);
+                  break;
         case TMP: fprintf(stderr, "%s", opr->info.var->name);
                   break;
         case IMM: fprintf(stderr, "%d", opr->info.imm);
@@ -217,14 +242,34 @@ void cinst_print(CInst_t inst) {
     fprintf(stderr, "\n");
 }
 
+void cphi_print(CPhi_t phi, CBlock_t blk) {
+    int i;
+    fprintf(stderr, "%s_%d = phi", phi->dest->info.var->name,
+                                    phi->dest->sub);
+    for (i = 0; i < blk->pred; i++)
+        fprintf(stderr, " %s_%d", phi->oprs[i]->info.var->name,
+                                    phi->oprs[i]->sub);
+    fprintf(stderr, "\n");
+}
+
 void cblock_print(CBlock_t blk) {
-    CInst_t p, sp = blk->insts;
     /*if (blk->ref)*/
-        fprintf(stderr, "_L%d:\n", blk->id + gbbase);
-    for (p = sp->next; p != sp; p = p->next)
+    fprintf(stderr, "_L%d:\n", blk->id + gbbase);
     {
-        fprintf(stderr, "\t");
-        cinst_print(p);
+        CPhi_t p, sp = blk->phis;
+        for (p = sp->next; p != sp; p = p->next)
+        {
+            fprintf(stderr, "\t");
+            cphi_print(p, blk);
+        }
+    }
+    {
+        CInst_t p, sp = blk->insts;
+        for (p = sp->next; p != sp; p = p->next)
+        {
+            fprintf(stderr, "\t");
+            cinst_print(p);
+        }
     }
 }
 void ssa_func_print(CBlock_t p) {
@@ -308,6 +353,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 CInst_t ps = NULL, t;
                 base->op = CALL;
                 base->src1 = ssa_exp_(p->chd, cur, lval, succ);
+                base->src2 = NULL;
                 base->dest = NEW(COpr);
                 base->dest->kind = TMP;
                 base->dest->info.var = ctmp_create(rt);
@@ -316,6 +362,8 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     CInst_t pi = NEW(CInst);
                     pi->op = PUSH;
                     pi->src1 = ssa_exp_(arg, cur, lval, succ);
+                    pi->src2 = NULL;
+                    pi->dest = NULL;
                     pi->next = ps;
                     ps = pi;
                 }
@@ -391,6 +439,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
             {
                 lval->op = MOVE;
                 lval->dest = res;
+                lval->src2 = NULL;
             }
             break;
         case STR:
@@ -583,6 +632,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                                           {
                                               inst->op = NEG;
                                               inst->src1 = lhs;
+                                              inst->src2 = NULL;
                                           }
                                           break;
                                 case '~':
@@ -663,17 +713,20 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
 
 
     j_inst->op = GOTO;
+    j_inst->src1 = NULL;
+    j_inst->src2 = NULL;
     j_inst->dest = NEW(COpr);
     j_inst->dest->kind = IMM;
-    j_inst->dest->info.imm = cond_blk->id;
+    j_inst->dest->info.imm = cond_blk->id + gbbase;
     cond_blk->ref = 1;
     cblock_append(cur, j_inst);
 
     if_inst->op = BNEZ;
     if_inst->src1 = ssa_exp(exp, cond_blk, 0);
+    if_inst->src2 = NULL;
     if_inst->dest = NEW(COpr);
     if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_blk->id;
+    if_inst->dest->info.imm = loop_blk->id + gbbase;
     loop_blk->ref = 1;
     cblock_append(cond_blk, if_inst);
 
@@ -706,17 +759,20 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     ssa_exp(exp3, loop_t, 1);
 
     j_inst->op = GOTO;
+    j_inst->src1 = NULL;
+    j_inst->src2 = NULL;
     j_inst->dest = NEW(COpr);
     j_inst->dest->kind = IMM;
-    j_inst->dest->info.imm = cond_blk->id;
+    j_inst->dest->info.imm = cond_blk->id + gbbase;
     cond_blk->ref = 1;
     cblock_append(cur, j_inst);
 
     if_inst->op = BNEZ;
     if_inst->src1 = ssa_exp(exp2, cond_blk, 0);
+    if_inst->src2 = NULL;
     if_inst->dest = NEW(COpr);
     if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_blk->id;
+    if_inst->dest->info.imm = loop_blk->id + gbbase;
     loop_blk->ref = 1;
     cblock_append(cond_blk, if_inst);
 
@@ -732,8 +788,7 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
 CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     CNode *body1 = p->chd->next,
           *body2 = body1->next;
-    CBlock_t then_blk = cblock_create(1), then_t,
-             next_blk,
+    CBlock_t then_blk, then_t, next_blk,
              else_blk, else_t;
     CInst_t if_inst = NEW(CInst);
     COpr_t rt = ssa_exp(p->chd, cur, 0);
@@ -746,9 +801,10 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
         else
             return cur;
     }
-
+    then_blk = cblock_create(1);
     if_inst->op = BEQZ;
     if_inst->src1 = rt; /* calculated cond */
+    if_inst->src2 = NULL;
     if_inst->dest = NEW(COpr);
     if_inst->dest->kind = IMM;
     cblock_append(cur, if_inst);
@@ -760,11 +816,13 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     {
         CInst_t j_inst = NEW(CInst);
         j_inst->op = GOTO;
+        j_inst->src1 = NULL;
+        j_inst->src2 = NULL;
         j_inst->dest = NEW(COpr);
         j_inst->dest->kind = IMM;
 
         else_blk = cblock_create(1);
-        if_inst->dest->info.imm = else_blk->id;
+        if_inst->dest->info.imm = else_blk->id + gbbase;
         else_blk->ref = 1;
         DBLINK(then_t, else_blk);
         else_t = ssa_stmt(body2, else_blk, loop_exit);
@@ -774,15 +832,15 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
         {
             next_blk = cblock_create(1);
             DBLINK(else_t, next_blk);
+            cfg_add_edge(else_t, next_blk);
         }
 
-        j_inst->dest->info.imm = next_blk->id;
+        j_inst->dest->info.imm = next_blk->id + gbbase;
         next_blk->ref = 1;
         cblock_append(then_t, j_inst);
 
         cfg_add_edge(cur, else_blk);
         cfg_add_edge(then_t, next_blk);
-        cfg_add_edge(else_t, next_blk);
     }
     else
     {
@@ -792,10 +850,10 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
         {
             next_blk = cblock_create(1);
             DBLINK(then_t, next_blk);
+            cfg_add_edge(then_t, next_blk);
         }
         cfg_add_edge(cur, next_blk);
-        cfg_add_edge(then_t, next_blk);
-        if_inst->dest->info.imm = next_blk->id;
+        if_inst->dest->info.imm = next_blk->id + gbbase;
         next_blk->ref = 1;
     }
     return next_blk;
@@ -808,6 +866,8 @@ CBlock_t ssa_ret(CNode *p, CBlock_t cur) {
         inst->src1 = ssa_exp(p->chd, cur, 0);
     else
         inst->src1 = NULL;
+    inst->src2 = NULL;
+    inst->dest = NULL;
     cblock_append(cur, inst);
     return cur;
 }
@@ -816,9 +876,11 @@ CBlock_t ssa_break(CBlock_t cur, CBlock_t loop_exit) {
     CInst_t inst = NEW(CInst);
     assert(loop_exit);
     inst->op = GOTO;
+    inst->src1 = NULL;
+    inst->src2 = NULL;
     inst->dest = NEW(COpr);
     inst->dest->kind = IMM;
-    inst->dest->info.imm = loop_exit->id;
+    inst->dest->info.imm = loop_exit->id + gbbase;
     loop_exit->ref = 1;
     cblock_append(cur, inst);
     cfg_add_edge(cur, loop_exit);
@@ -830,9 +892,11 @@ CBlock_t ssa_cont(CBlock_t cur, CBlock_t loop_exit) {
     assert(loop_exit);
     loop_exit = loop_exit->prev;    /* loop cond */
     inst->op = GOTO;
+    inst->src1 = NULL;
+    inst->src2 = NULL;
     inst->dest = NEW(COpr);
     inst->dest->kind = IMM;
-    inst->dest->info.imm = loop_exit->id;
+    inst->dest->info.imm = loop_exit->id + gbbase;
     loop_exit->ref = 1;
     cblock_append(cur, inst);
     cfg_add_edge(cur, loop_exit);
@@ -914,7 +978,7 @@ int cpset_belongs(CPSet_t cps, long key) {
 }
 
 int dom[MAX_BLOCK], ord[MAX_BLOCK], vis[MAX_BLOCK], par[MAX_BLOCK], ocnt;
-CPSet_t dfset[MAX_BLOCK];
+CPSet_t dfset[MAX_BLOCK], phi[MAX_BLOCK];
 CBList_t df[MAX_BLOCK];
 
 void dfs(CBlock_t u, int v) {
@@ -999,6 +1063,8 @@ void calc_dominant_frontier(CBlock_t entry) {
                 }
             }
         }
+    for (i = 1; i < bcnt; i++)
+        dtree_add_edge(blks[ord[dom[vis[i]]]], blks[i]);
     for (i = 0; i < bcnt; i++)
     {
         CBList_t p = df[i];
@@ -1008,71 +1074,211 @@ void calc_dominant_frontier(CBlock_t entry) {
     }
 }
 
+void insert_phi(CVList_t vars) {
+    CVList_t vp;
+    int i;
+    for (i = 0; i < bcnt; i++)
+    {
+        if (phi[i]) cpset_destory(phi[i]);
+        phi[i] = cpset_create();
+    }
+    for (vp = vars; vp; vp = vp->next)
+    { /* for each variable */
+        CVar_t var = vp->var;
+        CBList_t t = var->defsite;
+        CBList_t def = NULL;
+        static int indef[MAX_BLOCK];
+#ifdef CIBIC_DEBUG
+        fprintf(stderr, "%s:", var->name);
+#endif
+        for (t = var->defsite; t; t = t->next)
+            if (++indef[t->cblk->id] == 1)
+            {
+                CBList_t p = NEW(CBList);
+                p->cblk = t->cblk;
+                p->next = def;
+                def = p;
+            }
+        for (t = var->defsite; t; t = t->next)
+            indef[t->cblk->id] = 0; /* clear */
+#ifdef CIBIC_DEBUG
+        for (t = def; t; t = t->next)
+            fprintf(stderr, " %d", t->cblk->id);
+        fprintf(stderr, "\n");
+#endif
+        while (def) /* while def not empty */
+        {
+            CBList_t n = def, i; /* remove some node n from def */
+            def = def->next;
+            for (i = df[n->cblk->id]; i; i = i->next)
+            {
+                CBlock_t y = i->cblk;
+                CPSet_t phiy = phi[y->id];
+                if (!cpset_belongs(phiy, (long)var))
+                {
+                    CPhi_t phi = NEW(CPhi);
+                    CBList_t ndef;
+                    phi->dest = NEW(COpr);
+                    phi->dest->info.var = var;
+                    phi->oprs = (COpr_t *)malloc(sizeof(COpr_t) * y->pred);
+                    cblock_pappend(y, phi); 
+                    cpset_insert(phiy, (long)var);
+                    ndef = NEW(CBList);
+                    ndef->cblk = y;
+                    ndef->next = def;
+                    def = ndef;
+                }
+            }
+        }
+    }
+
+}
+
+void renaming_dfs(CBlock_t blk) {
+    CInst_t ih = blk->insts, i;
+    CPhi_t ph = blk->phis, pi;
+    CEdge *e = cfg.head[blk->id];
+    COList_t defs = NULL, dn;
+    for (pi = ph->next; pi != ph; pi = pi->next)
+    {
+        COpr_t dest = pi->dest;
+        CVar_t var = dest->info.var;
+        COList_t n = NEW(COList), n2;
+        dest->sub = ++var->cnt;
+        dest->def = NULL; /* pi */ 
+        n->opr = dest;
+        n->next = var->stack;
+        var->stack = n;
+        n2 = NEW(COList);
+        n2->opr = dest;
+        n2->next = defs;
+        defs = n2;
+    }
+    for (i = ih->next; i != ih; i = i->next)
+    {
+        COpr_t dest = i->dest;
+        COpr_t *opr[2] = {&(i->src1), &(i->src2)};
+        int t;
+        for (t = 0; t < 2; t++)
+        {
+            COpr_t p = *(opr[t]);
+            if (!(p && p->kind == VAR)) continue;
+            free(p);
+            *(opr[t]) = p->info.var->stack->opr;
+        }
+        if (dest && dest->kind == VAR && i->op != WARR)
+        {
+            CVar_t var = dest->info.var;
+            COList_t n = NEW(COList), n2;
+            dest->sub = ++var->cnt;
+            dest->def = i;
+            n->opr = dest;
+            n->next = var->stack;
+            var->stack = n;
+            n2 = NEW(COList);
+            n2->opr = dest;
+            n2->next = defs;
+            defs = n2;
+        }
+    }
+    for (; e; e = e->next) /* for each successor */
+    {
+        CBlock_t y = e->to;
+        int j = 0;
+        CEdge *pre = cfg.rhead[y->id];
+        for (; pre->to != blk; pre = pre->next) j++;
+        ph = y->phis;
+        for (pi = ph->next; pi != ph; pi = pi->next)
+            pi->oprs[j] = pi->dest->info.var->stack->opr;
+    }
+    for (e = dtree.head[blk->id]; e; e = e->next)
+        renaming_dfs(e->to);
+    for (; defs; defs = dn)
+    {
+        CVar_t var = defs->opr->info.var;
+        COList_t nf = var->stack->next;
+        free(var->stack);
+        var->stack = nf;
+        dn = defs->next;
+        free(defs);
+    }
+}
+
+void renaming_vars(CVList_t vars, CBlock_t entry) {
+    CVList_t vp;
+    for (vp = vars; vp; vp = vp->next)
+    {
+        CVar_t var = vp->var;
+        COpr_t idef = NEW(COpr);
+        COList_t n = NEW(COList);
+        var->cnt = 0;
+        var->stack = n;
+        n->opr = idef;
+        n->next = NULL;
+        idef->def = NULL;
+        idef->sub = 0;
+        idef->kind = VAR;
+        idef->info.var = var;
+    }
+    renaming_dfs(entry);
+}
+
 CBlock_t ssa_func(CType_t func) {
     CBlock_t entry = cblock_create(1), p;
-    CPSet_t vars = cpset_create();
+    CPSet_t vs = cpset_create(), avs = cpset_create();
+    CVList_t vars = NULL, all_vars = NULL;
+    int i;
     cfg_clear();
+    dtree_clear();
     ssa_comp(func->rec.func.body, entry, NULL);
     for (p = entry; p; p = p->next)
     {
         CInst_t head = p->insts, i;
+        CEdge *e;
+        p->pred = 0;
+        for (e = cfg.rhead[p->id]; e; e = e->next)
+            p->pred++;
         for (i = head->next; i != head; i = i->next)
         {
-            switch (i->op)
+            if (i->src1 && i->src1->kind == VAR)
+                cpset_insert(avs, (long)(i->src1->info.var));
+            if (i->src2 && i->src2->kind == VAR)
+                cpset_insert(avs, (long)(i->src2->info.var));
+            if (i->dest && i->dest->kind == VAR && i->op != WARR)
             {
-                case BEQZ: case BNEZ: case GOTO:
-                case PUSH: case RET:
-                case WARR:
-                    ; break;
-                default:
-                    {
-                        CVar_t d = i->dest->info.var;
-                        CBList_t b = NEW(CBList);
-                        cpset_insert(vars, (long)d);
-                        b->next = d->defsite;
-                        b->cblk = p;
-                        d->defsite = b;
-                    }
+                CVar_t d = i->dest->info.var;
+                CBList_t b = NEW(CBList);
+                cpset_insert(vs, (long)d);
+                cpset_insert(avs, (long)d);
+                b->next = d->defsite;
+                b->cblk = p;
+                d->defsite = b;
             }
         }
         blks[p->id] = p;
     }
     calc_dominant_frontier(entry);
     {
-        int i;
         CPNode *p;
         for (i = 0; i < MAX_TABLE_SIZE; i++)
-            for (p = vars->head[i]; p; p = p->next)
-            { /* for each variable */
-                CVar_t var = (CVar_t)p->key;
-                CBList_t t = var->defsite;
-                CBList_t def = NULL;
-                static int indef[MAX_BLOCK];
-#ifdef CIBIC_DEBUG
-                fprintf(stderr, "%s:", var->name);
-#endif
-                for (t = var->defsite; t; t = t->next)
-                    if (++indef[t->cblk->id] == 1)
-                    {
-                        CBList_t p = NEW(CBList);
-                        p->cblk = t->cblk;
-                        p->next = def;
-                        def = p;
-                    }
-                for (t = var->defsite; t; t = t->next)
-                    indef[t->cblk->id] = 0; /* clear */
-#ifdef CIBIC_DEBUG
-                for (t = def; t; t = t->next)
-                    fprintf(stderr, " %d", t->cblk->id);
-                fprintf(stderr, "\n");
-#endif
-                while (def) /* while def not empty */
-                {
-                    CBList_t n = def; /* remove some node n from def */
-                    def = def->next;
-
-                }
+        {
+            for (p = vs->head[i]; p; p = p->next)
+            {
+                CVList_t n = NEW(CVList);
+                n->next = vars;
+                n->var = (CVar_t)p->key;
+                vars = n;
             }
-    } 
+            for (p = avs->head[i]; p; p = p->next)
+            {
+                CVList_t n = NEW(CVList);
+                n->next = all_vars;
+                n->var = (CVar_t)p->key;
+                all_vars = n;
+            }
+        }
+    }
+    insert_phi(vars);
+    renaming_vars(all_vars, entry);
     return entry;
 }
