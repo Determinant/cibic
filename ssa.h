@@ -42,6 +42,7 @@ struct CInst {
         CALL,   /* call function */
         RET,    /* return */
         MOVE,
+        LOAD,   /* load from memory */
         MUL, DIV, MOD, ADD, SUB,
         SHL, SHR, AND, XOR, OR,
         LOR, LAND, NEG, NOR, SEQ,

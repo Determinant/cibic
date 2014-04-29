@@ -36,6 +36,12 @@ void cblock_append(CBlock_t cblk, CInst_t inst) {
     (inst->next = head)->prev = inst;
 }
 
+void cblock_pushfront(CBlock_t cblk, CInst_t inst) {
+    CInst_t head = cblk->insts;
+    (inst->next = head->next)->prev = inst;
+    (inst->prev = head)->next = inst;
+}
+
 void cblock_pappend(CBlock_t cblk, CPhi_t phi) {
     CPhi_t head = cblk->phis;
     (phi->prev = head->prev)->next = phi;
@@ -147,6 +153,10 @@ void copr_print(COpr_t opr) {
 void cinst_print(CInst_t inst) {
     switch (inst->op)
     {
+        case LOAD:
+            fprintf(stderr, "load ");
+            copr_print(inst->dest);
+            break;
         case MOVE:
             copr_print(inst->dest);
             fprintf(stderr, " = ");
@@ -1158,8 +1168,8 @@ void renaming_dfs(CBlock_t blk) {
         COpr_t dest = pi->dest;
         CVar_t var = dest->info.var;
         COList_t n = NEW(COList), n2;
-        dest->sub = ++var->cnt;
-        dest->def = NULL; /* pi */ 
+        dest->sub = var->cnt++;
+        dest->def = ih->next; /* the first inst */ 
         n->opr = dest;
         n->next = var->stack;
         var->stack = n;
@@ -1180,19 +1190,24 @@ void renaming_dfs(CBlock_t blk) {
             /* free(p); */ /* memory leak */
             *(opr[t]) = p->info.var->stack->opr;
         }
-        if (dest && dest->kind == VAR && i->op != WARR)
+        if (dest && dest->kind == VAR)
         {
-            CVar_t var = dest->info.var;
-            COList_t n = NEW(COList), n2;
-            dest->sub = ++var->cnt;
-            dest->def = i;
-            n->opr = dest;
-            n->next = var->stack;
-            var->stack = n;
-            n2 = NEW(COList);
-            n2->opr = dest;
-            n2->next = defs;
-            defs = n2;
+            if (i->op == WARR)
+                i->dest = dest->info.var->stack->opr;
+            else
+            {
+                CVar_t var = dest->info.var;
+                COList_t n = NEW(COList), n2;
+                dest->sub = var->cnt++;
+                dest->def = i;
+                n->opr = dest;
+                n->next = var->stack;
+                var->stack = n;
+                n2 = NEW(COList);
+                n2->opr = dest;
+                n2->next = defs;
+                defs = n2;
+            }
         }
     }
     for (; e; e = e->next) /* for each successor */
@@ -1222,7 +1237,16 @@ void renaming_vars(CVList_t vars, CBlock_t entry) {
     CVList_t vp;
     for (vp = vars; vp; vp = vp->next)
     {
-        CVar_t var = vp->var;
+        CInst_t ld = NEW(CInst);
+        vp->var->cnt = 0;
+        ld->op = LOAD;
+        ld->dest = NEW(COpr);
+        ld->dest->kind = VAR;
+        ld->dest->info.var = vp->var;
+        ld->src1 = NULL;
+        ld->src2 = NULL;
+        cblock_pushfront(entry, ld);
+/*      CVar_t var = vp->var;
         COpr_t idef = NEW(COpr);
         COList_t n = NEW(COList);
         var->cnt = 0;
@@ -1233,6 +1257,7 @@ void renaming_vars(CVList_t vars, CBlock_t entry) {
         idef->sub = 0;
         idef->kind = VAR;
         idef->info.var = var;
+        */
     }
     renaming_dfs(entry);
 }
@@ -1258,15 +1283,20 @@ CBlock_t ssa_func(CType_t func) {
                 cpset_insert(avs, (long)(i->src1->info.var));
             if (i->src2 && i->src2->kind == VAR)
                 cpset_insert(avs, (long)(i->src2->info.var));
-            if (i->dest && i->dest->kind == VAR && i->op != WARR)
+            if (i->dest && i->dest->kind == VAR)
             {
-                CVar_t d = i->dest->info.var;
-                CBList_t b = NEW(CBList);
-                cpset_insert(vs, (long)d);
-                cpset_insert(avs, (long)d);
-                b->next = d->defsite;
-                b->cblk = p;
-                d->defsite = b;
+                if (i->op == WARR)
+                    cpset_insert(avs, (long)(i->dest->info.var));
+                else
+                {
+                    CVar_t d = i->dest->info.var;
+                    CBList_t b = NEW(CBList);
+                    cpset_insert(vs, (long)d);
+                    cpset_insert(avs, (long)d);
+                    b->next = d->defsite;
+                    b->cblk = p;
+                    d->defsite = b;
+                }
             }
         }
         blks[p->id] = p;
