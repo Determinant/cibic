@@ -469,12 +469,26 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 {
                     inst->src1 = ssa_exp_(p->chd->next, cur, NULL, succ);
                     ssa_exp_(p->chd, cur, inst, succ);
-                    cblock_append(cur, inst);
                     if (inst->op == MOVE)
-                        return inst->dest;
+                    {
+                        CInst_t last = cblock_getback(cur);
+                        if (last && last->dest->kind == TMP)
+                        {
+                            free(last->dest);
+                            last->dest = inst->dest;
+                            free(inst);
+                            return last->dest;
+                        }
+                        else 
+                        {
+                            cblock_append(cur, inst);
+                            return inst->dest;
+                        }
+                    }
                     else
                     {
                         CInst_t tins = NEW(CInst);
+                        cblock_append(cur, inst);
                         tins->op = ARR;
                         tins->src1 = inst->dest;    /* base */
                         tins->src2 = inst->src2;    /* displacement */
