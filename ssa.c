@@ -1177,7 +1177,7 @@ void renaming_dfs(CBlock_t blk) {
         {
             COpr_t p = *(opr[t]);
             if (!(p && p->kind == VAR)) continue;
-            free(p);
+            /* free(p); */ /* memory leak */
             *(opr[t]) = p->info.var->stack->opr;
         }
         if (dest && dest->kind == VAR && i->op != WARR)
