@@ -939,7 +939,7 @@ ExpType exp_check_ref(ExpType op1, CNode *p) {
         ERROR((p, "lvalue required as unary '&' operand"));
     /* TODO: constant pointer folding */
     p->ext.is_const = 0;
-    /* should be constant */
+    /* should not be constant */
     res.lval = 0;
     res.type = ctype_create("", CPTR, p);
     res.type->rec.ref = op1.type;
