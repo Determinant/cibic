@@ -19,7 +19,8 @@ TODO
   - function to 'pointer to function' conversion (according the std 6.3.2/4) (done)
   - vague var table management (done)
   - incorrect address reference `&`
-  - const function name 
+  - const function name (done)
+  - remove the redundant edge from blocks that break a loop
 
 - Not Implemented:
 

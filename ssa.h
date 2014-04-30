@@ -28,9 +28,12 @@ struct COpr {
         int imm;
         char *str;
     } info;
+
     int sub;
     CInst_t def;
     CRange_t range;
+    int reg;        /* -1 for spilled */
+    COpr_t par;     /* union-find */
 };
 
 typedef struct COList COList;
@@ -60,6 +63,7 @@ struct CInst {
     COpr_t dest, src1, src2;
     CInst_t next, prev;
     int id;
+    int is_def;
 };
 
 typedef struct CPhi CPhi;

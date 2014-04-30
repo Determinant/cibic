@@ -116,7 +116,7 @@ void dtree_clear() {
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
-    printf("%d -> %d\n", from->id, to->id);
+/*     printf("%d -> %d\n", from->id, to->id); */
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -128,6 +128,7 @@ void cfg_add_edge(CBlock_t from, CBlock_t to) {
 }
 
 void dtree_add_edge(CBlock_t from, CBlock_t to) {
+/*    printf("%d d-> %d\n", from->id, to->id); */
     int id = from->id;
     CEdge *e = NEW(CEdge);
     e->to = to;
@@ -1150,11 +1151,9 @@ void insert_phi(CVList_t vars) {
         CBList_t t = var->defsite;
         CBList_t def = NULL;
         static int indef[MAX_BLOCK];
-        /*
 #ifdef CIBIC_DEBUG
         fprintf(stderr, "%s:", var->name);
 #endif
-*/
         for (t = var->defsite; t; t = t->next)
             if (++indef[t->cblk->id] == 1)
             {
@@ -1165,13 +1164,11 @@ void insert_phi(CVList_t vars) {
             }
         for (t = var->defsite; t; t = t->next)
             indef[t->cblk->id] = 0; /* clear */
-        /*
 #ifdef CIBIC_DEBUG
         for (t = def; t; t = t->next)
             fprintf(stderr, " %d", t->cblk->id);
         fprintf(stderr, "\n");
 #endif
-*/
         while (def) /* while def not empty */
         {
             CBList_t n = def, i; /* remove some node n from def */
@@ -1321,12 +1318,17 @@ void mark_insts() {
         CBlock_t b = blks[ord[i]];
         CInst_t ih = b->insts, ii;
         CPhi_t ph = b->phis, pi;
-        for (ii = ih->next; ii != ih; ii = ii->next)
-            ii->id = icnt++;
-        for (pi = ph->next; pi != ph; pi = pi->next)
-            icnt++;
-        b->first = ih->next->id;
-        b->last = ih->prev->id;
+        if (cblock_isempty(b))
+            b->first = b->last = icnt++;
+        else
+        {
+            for (ii = ih->next; ii != ih; ii = ii->next)
+                ii->id = icnt++;
+            for (pi = ph->next; pi != ph; pi = pi->next)
+                icnt++;
+            b->first = ih->next->id;
+            b->last = ih->prev->id;
+        }
     }
 }
 
@@ -1412,7 +1414,12 @@ void build_intervals() {
                 if (i->dest &&
                     (i->dest->kind == VAR ||
                      i->dest->kind == TMP) && i->op != WARR) /* def */
+                {
+                    i->is_def = 1;
                     cpset_erase(curlive, (long)i->dest);
+                }
+                else
+                    i->is_def = 0;
                 for (t = 0; t < 2; t++)
                 {
                     COpr_t opr = oprs[t];
@@ -1438,37 +1445,121 @@ void build_intervals() {
     }
 }
 
-void register_alloc(CBlock_t entry) {
-    mark_insts();
-    build_intervals();
+COpr_t cinterv_repr(COpr_t opr) {
+    return opr->par == opr ? opr : (opr->par = cinterv_repr(opr->par));
+}
+
+CRange_t crange_merge(CRange_t a, CRange_t b) {
+    CRange res;
+    CRange_t tail = &res;
+    res.next = NULL;
+    res.r = -1;
+    for (; a || b;)
     {
-        CBlock_t p;
-        for (p = entry; p; p = p->next)
+        if (a && (!b || a->l < b->l))
         {
-            CInst_t i, ih = p->insts;
-            CPhi_t pi, ph = p->phis;
-            for (i = ih->next; i != ih; i = i->next)
-                if (i->dest &&
-                    (i->dest->kind == VAR || i->dest->kind == TMP) && i->op != WARR)
-                {
-                    CRange_t p;
-                    copr_print(i->dest);
-                    fprintf(stderr, ": ");
-                    for (p = i->dest->range; p; p = p->next)
-                        fprintf(stderr, "[%d, %d)", p->l, p->r);
-                    fprintf(stderr, "\n");
-                }
-            for (pi = ph->next; pi != ph; pi = pi->next)
+            if (tail->r == a->l)
+                tail->r = a->r;
+            else
             {
-                CRange_t p;
-                copr_print(pi->dest);
-                fprintf(stderr, ": ");
-                for (p = pi->dest->range; p; p = p->next)
-                    fprintf(stderr, "[%d, %d)", p->l, p->r);
-                fprintf(stderr, "\n");
+                assert(tail->r < a->l);
+                tail->next = a;
+                tail = a;
             }
+            a = a->next;
+        }
+        else
+        {
+            if (tail->r == b->l)
+                tail->r = b->r;
+            else
+            {
+                assert(tail->r < b->l);
+                tail->next = b;
+                tail = b;
+            }
+            b = b->next;
         }
     }
+    tail->next = NULL;
+    return res.next;
+}
+
+void cinterv_union(COpr_t a, COpr_t b) {
+    a = cinterv_repr(a);
+    b = cinterv_repr(b);
+    fprintf(stderr, "merging ");
+    copr_print(a);
+    fprintf(stderr, " ");
+    copr_print(b);
+    fprintf(stderr, "\n");
+    if (a == b) return;
+    b->range = crange_merge(b->range, a->range);
+    a->par = b;
+}
+
+COList_t init_def(CBlock_t entry) {
+    CBlock_t p;
+    COList_t defs = NULL, def;
+    for (p = entry; p; p = p->next)
+    {
+        CInst_t i, ih = p->insts;
+        CPhi_t pi, ph = p->phis;
+        for (i = ih->next; i != ih; i = i->next)
+            if (i->is_def)
+            {
+                i->dest->par = i->dest;
+                def = NEW(COList);
+                def->opr = i->dest;
+                def->next = defs;
+                defs = def;
+            }
+        for (pi = ph->next; pi != ph; pi = pi->next)
+        {
+            pi->dest->par = pi->dest;
+            def = NEW(COList);
+            def->opr = pi->dest;
+            def->next = defs;
+            defs = def;
+        }
+    }
+    for (p = entry; p; p = p->next)
+    {
+        CPhi_t pi, ph = p->phis;
+        for (pi = ph->next; pi != ph; pi = pi->next)
+        {
+            int i;
+            for (i = 0; i < p->pred; i++)
+                cinterv_union(pi->dest, pi->oprs[i]);
+        }
+    }
+    return defs;
+}
+
+void print_intervals(COList_t defs) {
+    for (; defs; defs = defs->next)
+    {
+        COpr_t opr = defs->opr,
+               repr = cinterv_repr(opr);
+        CRange_t p;
+        copr_print(opr);
+        fprintf(stderr, ": ");
+        if (repr == opr)
+        {
+            for (p = opr->range; p; p = p->next)
+                fprintf(stderr, "[%d, %d)", p->l, p->r);
+        }
+        else copr_print(repr);
+        fprintf(stderr, "\n");
+    }
+}
+
+void register_alloc(CBlock_t entry) {
+    COList_t defs;
+    mark_insts();
+    build_intervals();
+    defs = init_def(entry);
+    print_intervals(defs);
 }
 
 CBlock_t ssa_func(CType_t func) {
