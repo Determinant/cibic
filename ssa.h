@@ -6,6 +6,13 @@
 typedef struct CInst CInst;
 typedef CInst *CInst_t;
 
+typedef struct CRange CRange;
+typedef struct CRange *CRange_t;
+struct CRange {
+    int l, r;   /* [l, r) */
+    CRange_t next;
+};
+
 typedef struct COpr COpr;
 typedef COpr *COpr_t;
 struct COpr {
@@ -22,6 +29,7 @@ struct COpr {
     } info;
     int sub;
     CInst_t def;
+    CRange_t range;
 };
 
 typedef struct COList COList;
@@ -50,6 +58,7 @@ struct CInst {
     } op;
     COpr_t dest, src1, src2;
     CInst_t next, prev;
+    int id;
 };
 
 typedef struct CPhi CPhi;
@@ -69,6 +78,7 @@ struct CBlock {
     int id;
     int ref;        /* if referenced by any gotos */
     int pred;       /* the number of predecessors */
+    int first, last;
 };
 
 typedef struct CBList CBList;
@@ -109,8 +119,15 @@ typedef struct CPSet {
 typedef CPSet *CPSet_t;
 
 CPSet_t cpset_create();
-void cpset_insert(CPSet_t cps, long key);
+int cpset_insert(CPSet_t cps, long key);
 int cpset_belongs(CPSet_t cps, long key);
+void cpset_destroy(CPSet_t cps);
+
+
+typedef struct CInterv {
+    COpr_t opr;
+    CRange_t range;
+} CInterv;
 
 void ssa_generate(CScope_t scope);
 #endif

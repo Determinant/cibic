@@ -116,7 +116,7 @@ void dtree_clear() {
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
-    printf("%d -> %d\n", from->id, to->id);
+/*    printf("%d -> %d\n", from->id, to->id); */
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -277,7 +277,7 @@ void cblock_print(CBlock_t blk) {
         CInst_t p, sp = blk->insts;
         for (p = sp->next; p != sp; p = p->next)
         {
-            fprintf(stderr, "\t");
+            fprintf(stderr, "%02d\t", p->id);
             cinst_print(p);
         }
     }
@@ -967,7 +967,7 @@ CPSet_t cpset_create() {
     return res;
 }
 
-void cpset_destory(CPSet_t cps) {
+void cpset_destroy(CPSet_t cps) {
     int i;
     for (i = 0; i < MAX_TABLE_SIZE; i++)
     {
@@ -980,16 +980,35 @@ void cpset_destory(CPSet_t cps) {
     }
 }
 
-void cpset_insert(CPSet_t cps, long key) {
+int cpset_insert(CPSet_t cps, long key) {
     unsigned int hv = key % MAX_TABLE_SIZE;
     CPNode *p = cps->head[hv], *np;
     for (; p; p = p->next)
         if (p->key == key)
-            return;
+            return 0;
     np = NEW(CPNode);
     np->key = key;
     np->next = cps->head[hv];
     cps->head[hv] = np;
+    return 1;
+}
+
+void cpset_erase(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    int flag = 0;
+    CPNode *p = cps->head[hv], *pp = NULL;
+    for (; p; pp = p, p = p->next)
+        if (p->key == key)
+        {
+            flag = 1;
+            break;
+        }
+    if (!flag) return;
+    if (pp)
+        pp->next = p->next;
+    else
+        cps->head[hv] = p->next;
+    free(p);
 }
 
 int cpset_belongs(CPSet_t cps, long key) {
@@ -1063,7 +1082,7 @@ void calc_dominant_frontier(CBlock_t entry) {
             np = p->next;
         }
         df[i] = NULL;
-        if (dfset[i]) cpset_destory(dfset[i]);
+        if (dfset[i]) cpset_destroy(dfset[i]);
         dfset[i] = cpset_create();
     }
     for (i = 0; i < bcnt; i++)
@@ -1103,7 +1122,7 @@ void insert_phi(CVList_t vars) {
     int i;
     for (i = 0; i < bcnt; i++)
     {
-        if (phi[i]) cpset_destory(phi[i]);
+        if (phi[i]) cpset_destroy(phi[i]);
         phi[i] = cpset_create();
     }
     for (vp = vars; vp; vp = vp->next)
@@ -1112,9 +1131,11 @@ void insert_phi(CVList_t vars) {
         CBList_t t = var->defsite;
         CBList_t def = NULL;
         static int indef[MAX_BLOCK];
+        /*
 #ifdef CIBIC_DEBUG
         fprintf(stderr, "%s:", var->name);
 #endif
+*/
         for (t = var->defsite; t; t = t->next)
             if (++indef[t->cblk->id] == 1)
             {
@@ -1125,11 +1146,13 @@ void insert_phi(CVList_t vars) {
             }
         for (t = var->defsite; t; t = t->next)
             indef[t->cblk->id] = 0; /* clear */
+        /*
 #ifdef CIBIC_DEBUG
         for (t = def; t; t = t->next)
             fprintf(stderr, " %d", t->cblk->id);
         fprintf(stderr, "\n");
 #endif
+*/
         while (def) /* while def not empty */
         {
             CBList_t n = def, i; /* remove some node n from def */
@@ -1170,6 +1193,7 @@ void renaming_dfs(CBlock_t blk) {
         COList_t n = NEW(COList), n2;
         dest->sub = var->cnt++;
         dest->def = ih->next; /* the first inst */ 
+        dest->range = NULL;
         n->opr = dest;
         n->next = var->stack;
         var->stack = n;
@@ -1190,23 +1214,32 @@ void renaming_dfs(CBlock_t blk) {
             /* free(p); */ /* memory leak */
             *(opr[t]) = p->info.var->stack->opr;
         }
-        if (dest && dest->kind == VAR)
+        if (dest)
         {
-            if (i->op == WARR)
-                i->dest = dest->info.var->stack->opr;
-            else
+            if (dest->kind == VAR)
             {
-                CVar_t var = dest->info.var;
-                COList_t n = NEW(COList), n2;
-                dest->sub = var->cnt++;
+                if (i->op == WARR)
+                    i->dest = dest->info.var->stack->opr;
+                else
+                {
+                    CVar_t var = dest->info.var;
+                    COList_t n = NEW(COList), n2;
+                    dest->sub = var->cnt++;
+                    dest->def = i;
+                    dest->range = NULL;
+                    n->opr = dest;
+                    n->next = var->stack;
+                    var->stack = n;
+                    n2 = NEW(COList);
+                    n2->opr = dest;
+                    n2->next = defs;
+                    defs = n2;
+                }
+            }
+            else if (dest->kind == TMP)
+            {
                 dest->def = i;
-                n->opr = dest;
-                n->next = var->stack;
-                var->stack = n;
-                n2 = NEW(COList);
-                n2->opr = dest;
-                n2->next = defs;
-                defs = n2;
+                dest->range = NULL;
             }
         }
     }
@@ -1260,6 +1293,129 @@ void renaming_vars(CVList_t vars, CBlock_t entry) {
         */
     }
     renaming_dfs(entry);
+}
+
+void mark_insts() {
+    int i, icnt = 0;
+    for (i = bcnt - 1; i >= 0; i--)
+    {
+        CBlock_t b = blks[ord[i]];
+        CInst_t ih = b->insts, ii;
+        CPhi_t ph = b->phis, pi;
+        for (ii = ih->next; ii != ih; ii = ii->next)
+            ii->id = icnt++;
+        for (pi = ph->next; pi != ph; pi = pi->next)
+            icnt++;
+        b->first = ih->next->id;
+        b->last = ih->prev->id;
+    }
+}
+
+CPSet_t liveset[MAX_BLOCK];
+COList_t live[MAX_BLOCK];
+
+void add_range(COpr_t opr, CBlock_t blk, int end) {
+    int dfid = opr->def->id;
+    CRange_t range = NEW(CRange);
+    if (blk->first <= dfid && dfid <= blk->last)
+        range->l = dfid;
+    else
+        range->l = blk->first;
+    range->r = end;
+    range->next = opr->range;
+    opr->range = range;
+}
+
+void build_intervals() {
+    int i;
+    for (i = 0; i < bcnt; i++)
+    {
+        COList_t p = live[i], np;
+        for (; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+        live[i] = NULL;
+        if (liveset[i]) cpset_destroy(liveset[i]);
+        liveset[i] = cpset_create();
+    }
+    for (i = 0; i < bcnt; i++)
+    {
+        int id = ord[i];
+        CBlock_t b = blks[id];
+        CEdge *e = cfg.head[id]; 
+        CPSet_t curlive = liveset[id];
+        for (; e; e = e->next)
+        {
+            int sid = e->to->id;
+            COList_t p = live[sid];
+            for (; p; p = p->next)
+                if (cpset_belongs(liveset[sid], (long)p->opr) &&
+                    cpset_insert(curlive, (long)p->opr))
+                {
+                    COList_t np = NEW(COList);
+                    np->opr = p->opr;
+                    np->next = live[id];
+                    live[id] = np;
+                }
+        }
+        {
+            COList_t p;
+            for (p = live[id]; p; p = p->next) 
+                add_range(p->opr, b, b->last + 1);
+        }
+        {
+            CInst_t ih = b->insts, i;
+            for (i = ih->prev; i != ih; i = i->prev)
+            {
+                int t;
+                COpr_t oprs[2] = {i->src1, i->src2};
+                if (i->dest &&
+                    (i->dest->kind == VAR ||
+                     i->dest->kind == TMP) && i->op != WARR) /* def */
+                    cpset_erase(curlive, (long)i->dest);
+                for (t = 0; t < 2; t++)
+                {
+                    COpr_t opr = oprs[t];
+                    if (opr && 
+                        (opr->kind == VAR ||
+                         opr->kind == TMP) && !cpset_belongs(curlive, (long)opr))
+                    {
+                        COList_t np = NEW(COList);
+                        np->opr = oprs[t];
+                        np->next = live[id];
+                        live[id] = np;
+                        cpset_insert(curlive, (long)oprs[t]);
+                        add_range(oprs[t], b, i->id);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void register_alloc(CBlock_t entry) {
+    mark_insts();
+    build_intervals();
+    {
+        CBlock_t p;
+        for (p = entry; p; p = p->next)
+        {
+            CInst_t i, ih = p->insts;
+            for (i = ih->next; i != ih; i = i->next)
+                if (i->dest &&
+                    (i->dest->kind == VAR || i->dest->kind == TMP) && i->op != WARR)
+                {
+                    CRange_t p;
+                    copr_print(i->dest);
+                    fprintf(stderr, ": ");
+                    for (p = i->dest->range; p; p = p->next)
+                        fprintf(stderr, "[%d, %d)", p->l, p->r);
+                    fprintf(stderr, "\n");
+                }
+        }
+    }
 }
 
 CBlock_t ssa_func(CType_t func) {
@@ -1324,5 +1480,8 @@ CBlock_t ssa_func(CType_t func) {
     }
     insert_phi(vars);
     renaming_vars(all_vars, entry);
+    register_alloc(entry);
+    cpset_destroy(vs);
+    cpset_destroy(avs);
     return entry;
 }
