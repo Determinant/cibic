@@ -116,7 +116,7 @@ void dtree_clear() {
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
-/*    printf("%d -> %d\n", from->id, to->id); */
+    printf("%d -> %d\n", from->id, to->id);
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -146,6 +146,8 @@ void copr_print(COpr_t opr) {
         case IMM: fprintf(stderr, "%d", opr->info.imm);
                   break;
         case IMMS: fprintf(stderr, "\"%s\"", opr->info.str);
+                  break;
+        case IMMF: fprintf(stderr, "%s", opr->info.str);
                   break;
     }
 }
@@ -445,6 +447,21 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
             res = NEW(COpr);
             res->kind = VAR;
             res->info.var = p->ext.var;
+            {
+                CVar_t var = res->info.var;
+                CType_t type = var->type;
+                if (type->type == CPTR &&
+                        type->rec.ref->type == CFUNC)
+                {
+                    char *name = type->rec.ref->name;
+                    if (*name != '\0')
+                    {
+                        res->kind = IMMF;
+                        res->info.str = name;
+                    }
+                }
+            }
+
             if (lval)
             {
                 lval->op = MOVE;
@@ -482,7 +499,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     if (inst->op == MOVE)
                     {
                         CInst_t last = cblock_getback(cur);
-                        if (last && last->dest->kind == TMP)
+                        if (last && last->dest == inst->src2)
                         {
                             free(last->dest);
                             last->dest = inst->dest;
@@ -1349,10 +1366,29 @@ void build_intervals() {
         for (; e; e = e->next)
         {
             int sid = e->to->id;
+            CBlock_t s = blks[sid];
             COList_t p = live[sid];
+            CPhi_t ph = s->phis, i;
+            for (i = ph->prev; i != ph; i = i->prev)
+            {
+                CEdge *pe;
+                int t;
+                for (t = 0, pe = cfg.rhead[sid]; pe->to != b; pe = pe->next) t++;
+                COpr_t opr = i->oprs[t];
+                if (opr && 
+                        (opr->kind == VAR ||
+                         opr->kind == TMP) && !cpset_belongs(curlive, (long)opr))
+                {
+                    COList_t np = NEW(COList);
+                    np->opr = opr;
+                    np->next = live[id];
+                    live[id] = np;
+                    cpset_insert(curlive, (long)opr);
+                }
+            }
             for (; p; p = p->next)
                 if (cpset_belongs(liveset[sid], (long)p->opr) &&
-                    cpset_insert(curlive, (long)p->opr))
+                        cpset_insert(curlive, (long)p->opr))
                 {
                     COList_t np = NEW(COList);
                     np->opr = p->opr;
@@ -1383,14 +1419,19 @@ void build_intervals() {
                          opr->kind == TMP) && !cpset_belongs(curlive, (long)opr))
                     {
                         COList_t np = NEW(COList);
-                        np->opr = oprs[t];
+                        np->opr = opr;
                         np->next = live[id];
                         live[id] = np;
-                        cpset_insert(curlive, (long)oprs[t]);
-                        add_range(oprs[t], b, i->id);
+                        cpset_insert(curlive, (long)opr);
+                        add_range(opr, b, i->id);
                     }
                 }
             }
+        }
+        {
+            CPhi_t ph = b->phis, i;
+            for (i = ph->prev; i != ph; i = i->prev)
+                cpset_erase(curlive, (long)i->dest);
         }
     }
 }
@@ -1403,6 +1444,7 @@ void register_alloc(CBlock_t entry) {
         for (p = entry; p; p = p->next)
         {
             CInst_t i, ih = p->insts;
+            CPhi_t pi, ph = p->phis;
             for (i = ih->next; i != ih; i = i->next)
                 if (i->dest &&
                     (i->dest->kind == VAR || i->dest->kind == TMP) && i->op != WARR)
@@ -1414,6 +1456,15 @@ void register_alloc(CBlock_t entry) {
                         fprintf(stderr, "[%d, %d)", p->l, p->r);
                     fprintf(stderr, "\n");
                 }
+            for (pi = ph->next; pi != ph; pi = pi->next)
+            {
+                CRange_t p;
+                copr_print(pi->dest);
+                fprintf(stderr, ": ");
+                for (p = pi->dest->range; p; p = p->next)
+                    fprintf(stderr, "[%d, %d)", p->l, p->r);
+                fprintf(stderr, "\n");
+            }
         }
     }
 }

@@ -20,7 +20,8 @@ struct COpr {
         VAR,
         TMP,
         IMM,
-        IMMS
+        IMMS,
+        IMMF
     } kind;
     union {
         CVar_t var;
