@@ -362,7 +362,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
         case POSTFIX_CALL:
             {
                 CNode *arg = post->chd->chd;
-                CInst_t ps = NULL, t;
+                /* CInst_t ps = NULL, t; */
                 base->op = CALL;
                 base->src1 = ssa_exp_(p->chd, cur, lval, succ);
                 base->src2 = NULL;
@@ -376,14 +376,16 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     pi->src1 = ssa_exp_(arg, cur, lval, succ);
                     pi->src2 = NULL;
                     pi->dest = NULL;
-                    pi->next = ps;
-                    ps = pi;
+                    /* pi->next = ps;
+                    ps = pi; */
+                    cblock_append(cur, pi);
                 }
+                /*
                 for (; ps; ps = t)
                 {
                     t = ps->next;
                     cblock_append(cur, ps);
-                }
+                } */
             }
             break;
         default:
