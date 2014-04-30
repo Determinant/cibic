@@ -55,7 +55,8 @@ void print_sem() {
 void print_ssa() {
     cibic_init();
     yyparse();
-    ssa_generate(semantics_check(ast_root));
+    semantics_check(ast_root);
+    ssa_generate();
 }
 
 void print_help() {

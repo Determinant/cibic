@@ -273,8 +273,8 @@ CType_t ctype_create(char *name, int type, CNode *ast) {
     return ct;
 }
 
-static int align_shift(int x) {
-    return x + ((4 - (x & 3)) & 3);
+int align_shift(int x) {
+    return ((4 - (x & 3)) & 3);
 }
 
 int calc_size(CType_t type) {
@@ -296,8 +296,11 @@ int calc_size(CType_t type) {
                 if (!p) return -1;
                 for (; p; p = p->next)
                 {
+                    /* add padding to align to word boundary */
+                    if (p->type->type != CCHAR)
+                        size += align_shift(size);
                     p->start = size;
-                    size += align_shift(calc_size(p->type));
+                    size += calc_size(p->type);
                 }
             }
             break;
@@ -308,7 +311,7 @@ int calc_size(CType_t type) {
                 if (!p) return -1;
                 for (; p; p = p->next)
                 {
-                    int t = align_shift(calc_size(p->type));
+                    int t = calc_size(p->type);
                     if (t > size) size = t;
                     p->start = 0;
                 }
@@ -1809,7 +1812,10 @@ void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
 void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
 void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
-CScope_t semantics_check(CNode *p) {
+CTList_t funcs;
+CVList_t gvars;
+
+void semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
     basic_type_char = ctype_create("char", CCHAR, NULL);
@@ -1840,7 +1846,55 @@ CScope_t semantics_check(CNode *p) {
             default: assert(0);
         }
     }
-/*    cscope_debug_print(scope);
+    {
+        int i;
+        CTNode *p;
+        funcs = NULL;
+        gvars = NULL;
+        for (i = 0; i < MAX_TABLE_SIZE; i++)
+            for (p = scope->ids->head[i]; p; p = p->next)
+            {
+                CSymbol_t tp = (CSymbol_t)(p->val);
+                CType_t func = tp->rec.type;
+                if (tp->kind == CTYPE &&
+                    func->type == CFUNC &&
+                    func->rec.func.body)
+                {
+                    CTList_t nf = NEW(CTList);
+                    CVar_t p;
+                    int size;
+                    nf->type = func;
+                    nf->next = funcs;
+                    funcs = nf;
+                    size = 0;
+                    for (p = func->rec.func.params; p; p = p->next)
+                    {
+                        /* force to a word alignment */
+                        size += align_shift(size);
+                        p->start = size;
+                        size += calc_size(p->type);
+                    }
+                    func->rec.func.params_size = size;
+                    size = 0;
+                    for (p = func->rec.func.local; p; p = p->next)
+                    {
+                        /* force to a word alignment */
+                        size += align_shift(size);
+                        p->start = size;
+                        size += calc_size(p->type);
+                    }
+                    func->rec.func.local_size = size;
+                }
+                else if (tp->kind == CVAR)
+                {
+                    CVList_t nv = NEW(CVList);
+                    nv->var = tp->rec.var;
+                    nv->next = gvars;
+                    gvars = nv;
+                }
+            }
+    }
+    /*    cscope_debug_print(scope);
     {
         CTNode *p;
         int i;
@@ -1862,5 +1916,4 @@ CScope_t semantics_check(CNode *p) {
             }
     }
     cnode_debug_print(ast_root, 1); */
-    return scope;
 }

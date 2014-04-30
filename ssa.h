@@ -55,6 +55,7 @@ struct CInst {
         RET,    /* return */
         MOVE,
         LOAD,   /* load from memory */
+        ADDR,   /* get address */
         MUL, DIV, MOD, ADD, SUB,
         SHL, SHR, AND, XOR, OR,
         LOR, LAND, NEG, NOR, SEQ,
@@ -93,13 +94,6 @@ struct CBList {
     CBList_t next;
 };
 
-typedef struct CVList CVList;
-typedef CVList *CVList_t;
-struct CVList {
-    CVar_t var;
-    CVList_t next;
-};
-
 CBlock_t cblock_create(int inc);
 void cblock_append(CBlock_t cblk, CInst_t inst);
 void cblock_pappend(CBlock_t cblk, CPhi_t phi);
@@ -134,5 +128,9 @@ typedef struct CInterv {
     CRange_t range;
 } CInterv;
 
-void ssa_generate(CScope_t scope);
+void ssa_generate();
+extern int gbbase;
+extern CBlock_t entry;
+extern COList_t defs;
+extern CType_t func;
 #endif

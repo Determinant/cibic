@@ -4,6 +4,7 @@
 #include <assert.h>
 #include "ast.h"
 #include "ssa.h"
+#include "mips.h"
 #define NEW(type) ((type *)malloc(sizeof(type)))
 #define DBLINK(from, to) ((from)->next = (to))->prev = (from)
 
@@ -11,7 +12,12 @@ static CGraph cfg, dtree;
 static CBlock_t blks[MAX_BLOCK];
 static int bcnt;        /* block counter */
 static int tcnt;        /* temporary counter */
-static int gbbase;
+
+/* for code generation */
+int gbbase;
+CBlock_t entry;
+COList_t defs;
+CType_t func;
 
 CBlock_t cblock_create(int inc) {
     CBlock_t cblk = NEW(CBlock);
@@ -218,6 +224,11 @@ void cinst_print(CInst_t inst) {
             }
             else fprintf(stderr, "return");
             break;
+        case ADDR:
+            copr_print(inst->dest);
+            fprintf(stderr, " = addr ");
+            copr_print(inst->src1);
+            break;
         default:
             {
                 const char *op;
@@ -289,23 +300,19 @@ void ssa_func_print(CBlock_t p) {
     for (; p; p = p->next)
         cblock_print(p);
 }
-CBlock_t  ssa_func(CType_t);
-void ssa_generate(CScope_t scope) {
-    CTNode *p;
-    int i;
-    for (i = 0; i < MAX_TABLE_SIZE; i++)
-        for (p = scope->ids->head[i]; p; p = p->next)
-        {
-            CSymbol_t tp = (CSymbol_t)(p->val);
-            CType_t func = tp->rec.type;
-            if (tp->kind != CTYPE ||
-                func->type != CFUNC ||
-                !func->rec.func.body) continue;
-            fprintf(stderr, "%s:\n", tp->rec.type->name);
-            ssa_func_print(ssa_func(func));
-            gbbase += bcnt;
-            bcnt = 0;
-        }
+void ssa_func(CType_t);
+void ssa_generate() {
+    CTList_t f;
+    for (f = funcs; f; f = f->next)
+    {
+        func = f->type;
+        fprintf(stderr, "%s:\n", func->name);
+        ssa_func(func);
+        ssa_func_print(entry);
+        mips_generate();
+        gbbase += bcnt;
+        bcnt = 0;
+    }
 }
 
 COpr_t ssa_exp_(CNode *p, CBlock_t, CInst_t, CBlock_t);
@@ -556,6 +563,26 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                         }
                     }
                 }
+                else if (op == '&' && !p->chd->next)
+                {
+                    ssa_exp_(p->chd, cur, inst, succ);
+                    if (inst->op == MOVE)
+                    {
+                        inst->op = ADDR;
+                        inst->src1 = inst->dest;
+                        inst->src2 = NULL;
+                    }
+                    else
+                    {
+                        inst->op = ADD;
+                        inst->src1 = inst->dest;
+                    }
+                    inst->dest = NEW(COpr);
+                    inst->dest->kind = TMP;
+                    inst->dest->info.var = ctmp_create(p->ext.type);
+                    cblock_append(cur, inst);
+                    return inst->dest;
+                }
                 else
                 {
                     int unary = 0;
@@ -649,20 +676,11 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                                 case OPT_GE: inst->op = GE; break;
                                 case '/': inst->op = DIV; break;
                                 case '%': inst->op = MOD; break;
-                                case '&':
-                                          if (p->chd->next)
-                                              inst->op = AND;
-                                          else
-                                          {
-                                              rec = 0;
-                                              res = NEW(COpr);
-                                              res->kind = IMM;
-                                              res->info.imm = 0;
-                                              /* TODO: be filled in with correct address */
-                                          }
-                                          break;
                                 case '*':
                                           inst->op = MUL;
+                                          break;
+                                case '&':
+                                          inst->op = AND;
                                           break;
                                 case '+':
                                           if (p->chd->next)
@@ -1062,7 +1080,7 @@ int intersect(int b1, int b2) {
     return b1;
 }
 
-void calc_dominant_frontier(CBlock_t entry) {
+void calc_dominant_frontier() {
     int i;
     int ch = 1;
     ocnt = 0;
@@ -1282,7 +1300,7 @@ void renaming_dfs(CBlock_t blk) {
     }
 }
 
-void renaming_vars(CVList_t vars, CBlock_t entry) {
+void renaming_vars(CVList_t vars) {
     CVList_t vp;
     for (vp = vars; vp; vp = vp->next)
     {
@@ -1498,7 +1516,7 @@ void cinterv_union(COpr_t a, COpr_t b) {
     a->par = b;
 }
 
-COList_t init_def(CBlock_t entry) {
+COList_t init_def() {
     CBlock_t p;
     COList_t defs = NULL, def;
     for (p = entry; p; p = p->next)
@@ -1554,16 +1572,16 @@ void print_intervals(COList_t defs) {
     }
 }
 
-void register_alloc(CBlock_t entry) {
-    COList_t defs;
+void register_alloc() {
     mark_insts();
     build_intervals();
-    defs = init_def(entry);
+    defs = init_def();
     print_intervals(defs);
 }
 
-CBlock_t ssa_func(CType_t func) {
-    CBlock_t entry = cblock_create(1), p;
+void ssa_func(CType_t func) {
+    CBlock_t p;
+    entry = cblock_create(1);
     CPSet_t vs = cpset_create(), avs = cpset_create();
     CVList_t vars = NULL, all_vars = NULL;
     int i;
@@ -1601,7 +1619,7 @@ CBlock_t ssa_func(CType_t func) {
         }
         blks[p->id] = p;
     }
-    calc_dominant_frontier(entry);
+    calc_dominant_frontier();
     {
         CPNode *p;
         for (i = 0; i < MAX_TABLE_SIZE; i++)
@@ -1623,9 +1641,8 @@ CBlock_t ssa_func(CType_t func) {
         }
     }
     insert_phi(vars);
-    renaming_vars(all_vars, entry);
-    register_alloc(entry);
+    renaming_vars(all_vars);
+    register_alloc();
     cpset_destroy(vs);
     cpset_destroy(avs);
-    return entry;
 }

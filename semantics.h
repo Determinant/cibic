@@ -13,8 +13,25 @@ typedef CSymbol *CSymbol_t;
 typedef struct CDef CDef;
 typedef CDef *CDef_t;
 
+typedef struct CTList CTList;
+typedef CTList *CTList_t;
+struct CTList {
+    CType_t type;
+    CTList_t next;
+};
+
+typedef struct CVList CVList;
+typedef CVList *CVList_t;
+struct CVList {
+    CVar_t var;
+    CVList_t next;
+};
+
+
 typedef struct CBList *CBList_t;
 typedef struct COList *COList_t;
+typedef struct CVList *CVList_t;
+
 struct CVar {
     char *name;
     CVar_t next;    /* next in the linked list */
@@ -57,6 +74,8 @@ struct CType {
             CVar_t local;
             CType_t ret;
             CNode *body;
+            int params_size;
+            int local_size;
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */
@@ -154,7 +173,7 @@ void cscope_debug_print(CScope_t cs);
 unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
 
-CScope_t semantics_check(CNode *ast);
+void semantics_check(CNode *ast);
 
 enum DefState{
     FORCE_ID,
@@ -170,4 +189,8 @@ void block_exit(void);
 void def_enter(enum DefState kind);
 void def_exit(void);
 int calc_size(CType_t type);
+int align_shift(int x);
+
+extern CTList_t funcs;
+extern CVList_t gvars;
 #endif
