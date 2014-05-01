@@ -25,8 +25,9 @@ struct COpr {
     } kind;
     union {
         CVar_t var;
-        int imm;
+        CSList_t cstr;
         char *str;
+        int imm;
     } info;
 
     int sub;

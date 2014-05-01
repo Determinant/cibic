@@ -27,6 +27,13 @@ struct CVList {
     CVList_t next;
 };
 
+typedef struct CSList CSList;
+typedef CSList *CSList_t;
+struct CSList {
+    char *str;
+    int id;
+    CSList_t next;
+};
 
 typedef struct CBList *CBList_t;
 typedef struct COList *COList_t;
@@ -194,4 +201,5 @@ int align_shift(int x);
 
 extern CTList_t funcs;
 extern CVList_t gvars;
+extern CSList_t cstrs;
 #endif

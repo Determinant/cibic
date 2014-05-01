@@ -166,7 +166,7 @@ void copr_print(COpr_t opr) {
                   break;
         case IMM: fprintf(stderr, "%d", opr->info.imm);
                   break;
-        case IMMS: fprintf(stderr, "\"%s\"", opr->info.str);
+        case IMMS: fprintf(stderr, "\"%s\"", opr->info.cstr->str);
                   break;
         case IMMF: fprintf(stderr, "%s", opr->info.str);
                   break;
@@ -354,7 +354,16 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 base->dest->info.var = ctmp_create(rt);
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2 = off->dest;
-                base->op = rt->type == CARR ? ADD : ARR;
+                if (rt->type == CARR)
+                {
+                    /* convert to pointer type */
+                    CType_t a = ctype_create("", CPTR, p);
+                    a->rec.ref = rt->rec.arr.elem;
+                    base->op = ADD;
+                    base->dest->info.var->type = a;
+                }
+                else 
+                    base->op = ARR;
             }
             break;
         case POSTFIX_DOT:
@@ -492,9 +501,8 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
         case STR:
             res = copr_create();
             res->kind = IMMS;
-            res->info.str = p->rec.strval;
+            res->info.cstr = (CSList_t)(p->ext.const_val);
             break;
-
         default:
             if (p->ext.is_const)
             {
@@ -727,50 +735,6 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                             {
                                 if (auto_dest)
                                 {
-                                    /*
-                                    if (inst->src1->kind == IMM)
-                                    {
-                                        if (inst->op == NEG)
-                                        {
-                                           inst->src1->info.imm *= -1;
-                                           res = inst->src1;
-                                           free(inst);
-                                           return res;
-                                        }
-                                        else if (inst->src2->kind == IMM)
-                                        {
-                                            int *imm = &inst->src1->info.imm;
-                                            int imm2 = inst->src2->info.imm;
-                                            switch (inst->op)
-                                            {
-                                                case MUL: *imm *= imm2; break;
-                                                case DIV: *imm /= imm2; break;
-                                                case MOD: *imm %= imm2; break;
-                                                case ADD: *imm += imm2; break;
-                                                case SUB: *imm -= imm2; break;
-                                                case SHL: *imm <<= imm2; break;
-                                                case SHR: *imm >>= imm2; break;
-                                                case AND: *imm &= imm2; break;
-                                                case XOR: *imm ^= imm2; break;
-                                                case OR: *imm  |= imm2; break;
-                                                case LOR: *imm = *imm || imm2; break;
-                                                case LAND: *imm = *imm && imm2; break;
-                                                case NOR: *imm = ~(*imm | imm2); break;
-                                                case EQ: *imm = *imm == imm2; break;
-                                                case NE: *imm = *imm != imm2; break;
-                                                case LT: *imm = *imm < imm2; break;
-                                                case GT: *imm = *imm > imm2; break;
-                                                case LE: *imm = *imm <= imm2; break;
-                                                case GE: *imm = *imm >= imm2; break;
-                                                default: assert(0);
-                                            }
-                                            res = inst->src1;
-                                            free(inst->src2);
-                                            free(inst);
-                                            return res;
-                                        }
-                                    }
-                                    */
                                     inst->dest = copr_create();
                                     inst->dest->kind = TMP;
                                     inst->dest->info.var = ctmp_create(p->ext.type);
@@ -1391,14 +1355,22 @@ COList_t live[MAX_BLOCK];
 
 void add_range(COpr_t opr, CBlock_t blk, int end) {
     int dfid = opr->def->id;
-    CRange_t range = NEW(CRange);
+    int begin;
+    CRange_t range, prev = opr->range;
     if (blk->first <= dfid && dfid <= blk->last)
-        range->l = dfid;
+        begin = dfid;
     else
-        range->l = blk->first;
-    range->r = end;
-    range->next = opr->range;
-    opr->range = range;
+        begin = blk->first;
+    if (prev && prev->l == end)
+        prev->l = begin;
+    else
+    {
+        range = NEW(CRange);
+        range->l = begin;
+        range->r = end;
+        range->next = prev;
+        opr->range = range;
+    }
 }
 
 void build_intervals() {
@@ -1552,9 +1524,10 @@ void cinterv_union(COpr_t a, COpr_t b) {
     a->par = b;
 }
 
-COList_t init_def() {
+void init_def() {
     CBlock_t p;
-    COList_t defs = NULL, def;
+    COList_t def;
+    defs = NULL;
     for (p = entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
@@ -1587,13 +1560,13 @@ COList_t init_def() {
                 cinterv_union(pi->dest, pi->oprs[i]);
         }
     }
-    return defs;
 }
 
-void print_intervals(COList_t defs) {
-    for (; defs; defs = defs->next)
+void print_intervals() {
+    COList_t d;
+    for (d = defs; d; d = d->next)
     {
-        COpr_t opr = defs->opr,
+        COpr_t opr = d->opr,
                repr = cinterv_repr(opr);
         CRange_t p;
         copr_print(opr);
@@ -1611,14 +1584,14 @@ void print_intervals(COList_t defs) {
 void register_alloc() {
     mark_insts();
     build_intervals();
-    defs = init_def();
+    init_def();
     /* FIXME: all vars are spilled */
     {
         COList_t p;
         for (p = defs; p; p = p->next)
             p->opr->reg = -1;
     }
-    print_intervals(defs);
+    print_intervals();
 }
 
 void const_propagation() {
@@ -1626,12 +1599,16 @@ void const_propagation() {
     for (i = bcnt - 1; i >= 0; i--)
     {
         CBlock_t b = blks[vis[i]];
-        CInst_t i, ih = b->insts;
-        for (i = ih->next; i != ih; i = i->next)
+        CInst_t i, ni, ih = b->insts;
+        for (i = ih->next; i != ih; i = ni)
         {
             int flag = 0;
             COpr_t t;
-            if (!i->dest) continue;
+            if (!i->dest) 
+            {
+                ni = i->next;
+                continue;
+            }
             if (i->src1 && i->src1->cval)
             {
                 t = i->src1->cval;
@@ -1696,7 +1673,17 @@ void const_propagation() {
                     }
                 }
             }
-            if (flag) i->dest->cval = i->src1;
+            ni = i->next;
+            if (flag)
+            {
+                i->dest->cval = i->src1;
+                if (i->dest->kind == TMP)
+                {
+                    i->next->prev = i->prev;
+                    i->prev->next = i->next;
+                    free(i);
+                }
+            }
         }
     }
 }

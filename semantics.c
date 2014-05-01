@@ -59,6 +59,11 @@ static CType_t basic_type_void;
 static CType_t builtin_printf;
 static CType_t builtin_scanf;
 static CType_t builtin_malloc;
+static int scnt = 0;
+
+CTList_t funcs;
+CVList_t gvars;
+CSList_t cstrs;
 
 static void error_print(CNode *ast, const char *fmt, ...) {
     va_list args;
@@ -1243,11 +1248,18 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
         case STR:
             {
                 CType_t type = ctype_create("", CPTR, NULL);
+                CSList_t cstr = NEW(CSList);
+
+                cstr->str = p->rec.strval;
+                cstr->next = cstrs;
+                cstr->id = scnt++;
+                cstrs = cstr;
+
                 type->rec.ref = basic_type_char;
                 res.type = type;
                 res.lval = 0;
                 p->ext.is_const = 1;
-                /* TODO: to be filled with address */
+                p->ext.const_val = (long)cstr;
             }
             break;
         case EXP:
@@ -1813,9 +1825,6 @@ void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
 void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
 void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
 
-CTList_t funcs;
-CVList_t gvars;
-
 void semantics_check(CNode *p) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
@@ -1835,6 +1844,8 @@ void semantics_check(CNode *p) {
     cscope_push_type(scope, builtin_printf, NS_ID);
     cscope_push_type(scope, builtin_scanf, NS_ID);
     cscope_push_type(scope, builtin_malloc, NS_ID);
+    /* const string counter */
+    scnt = 0;
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {
