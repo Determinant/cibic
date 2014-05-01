@@ -1870,10 +1870,14 @@ void semantics_check(CNode *p) {
                     size = 0;
                     for (p = func->rec.func.params; p; p = p->next)
                     {
+                        CType_t t = p->type;
                         /* force to a word alignment */
                         size += align_shift(size);
                         p->start = size;
-                        size += calc_size(p->type);
+                        if (t->type == CARR)
+                            size += PTR_SIZE;
+                        else
+                            size += calc_size(t);
                     }
                     size = 0;
                     for (p = func->rec.func.local; p; p = p->next)
