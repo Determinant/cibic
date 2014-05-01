@@ -466,6 +466,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
     return base->dest;
 }
 
+#define IS_PTR(tt) ((tt) == CPTR || (tt) == CARR)
 COpr_t ssa_exp(CNode *, CBlock_t, int);
 COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
     COpr_t res;
@@ -580,6 +581,88 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                             return inst->dest;
                         }
                     }
+                }
+                else if (op == '+' && IS_PTR(p->ext.type->type))
+                {
+                    COpr_t lhs = ssa_exp_(p->chd, cur, lval, succ),
+                           rhs = ssa_exp_(p->chd->next, cur, lval, succ);
+                    CInst_t index = cinst_create();
+                    CType_t et = p->chd->ext.type;
+                    if (et->type == CPTR)
+                        et = et->rec.ref;
+                    else
+                        et = et->rec.arr.elem;
+                    index->op = MUL;
+                    index->dest = copr_create();
+                    index->dest->kind = TMP;
+                    index->dest->info.var = ctmp_create(p->chd->next->ext.type);
+                    index->src1 = rhs;
+                    index->src2 = copr_create();
+                    index->src2->kind = IMM;
+                    index->src2->info.imm = calc_size(et);
+
+                    inst->op = ADD;
+                    inst->dest = copr_create();
+                    inst->dest->kind = TMP;
+                    inst->dest->info.var = ctmp_create(p->ext.type);
+                    inst->src1 = lhs;
+                    inst->src2 = index->dest;
+                    cblock_append(cur, index);
+                    cblock_append(cur, inst);
+                    return inst->dest;
+                }
+                else if (op == '-' && IS_PTR(p->chd->ext.type->type))
+                {
+                    CType_t nt = p->chd->next->ext.type;
+                    CType_t et = p->chd->ext.type;
+                    COpr_t lhs = ssa_exp_(p->chd, cur, lval, succ),
+                           rhs = ssa_exp_(p->chd->next, cur, lval, succ);
+                    CInst_t diff = cinst_create();
+
+                    if (et->type == CPTR)
+                        et = et->rec.ref;
+                    else
+                        et = et->rec.arr.elem;
+
+                    if (IS_PTR(nt->type))
+                    {
+                        diff->op = SUB;
+                        diff->dest = copr_create();
+                        diff->dest->kind = TMP;
+                        diff->dest->info.var = ctmp_create(p->ext.type);
+                        diff->src1 = lhs;
+                        diff->src2 = rhs;
+
+                        inst->op = DIV;
+                        inst->dest = copr_create();
+                        inst->dest->kind = TMP;
+                        inst->dest->info.var = ctmp_create(p->ext.type);
+                        inst->src1 = diff->dest;
+                        inst->src2 = copr_create();
+                        inst->src2->kind = IMM;
+                        inst->src2->info.imm = calc_size(et);
+                    }
+                    else
+                    {
+                        diff->op = MUL;
+                        diff->dest = copr_create();
+                        diff->dest->kind = TMP;
+                        diff->dest->info.var = ctmp_create(p->chd->next->ext.type);
+                        diff->src1 = rhs;
+                        diff->src2 = copr_create();
+                        diff->src2->kind = IMM;
+                        diff->src2->info.imm = calc_size(et);
+
+                        inst->op = SUB;
+                        inst->dest = copr_create();
+                        inst->dest->kind = TMP;
+                        inst->dest->info.var = ctmp_create(p->ext.type);
+                        inst->src1 = lhs;
+                        inst->src2 = diff->dest;
+                    }
+                    cblock_append(cur, diff);
+                    cblock_append(cur, inst);
+                    return inst->dest;
                 }
                 else if (op == '&' && !p->chd->next)
                 {
