@@ -76,7 +76,7 @@ struct CType {
             CType_t ret;
             CNode *body;
             int local_size;
-            int params_size;
+            int frame_size;
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */

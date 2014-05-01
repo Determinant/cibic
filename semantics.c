@@ -1875,7 +1875,6 @@ void semantics_check(CNode *p) {
                         p->start = size;
                         size += calc_size(p->type);
                     }
-                    func->rec.func.params_size = size;
                     size = 0;
                     for (p = func->rec.func.local; p; p = p->next)
                     {

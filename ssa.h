@@ -58,8 +58,8 @@ struct CInst {
         LOAD,   /* load from memory */
         ADDR,   /* get address */
         MUL, DIV, MOD, ADD, SUB,
-        SHL, SHR, AND, XOR, OR,
-        LOR, LAND, NOR,
+        SHL, SHR, AND, XOR, OR, NOR,
+        LOR, LAND,
         EQ, NE, LT, GT, LE, GE,
         NEG
     } op;
@@ -67,7 +67,8 @@ struct CInst {
     CInst_t next, prev;
     int id;
     int is_def;
-    int bret;
+    int bret;   /* for CALL */
+    int offset; /* for PUSH */
 };
 
 typedef struct CPhi CPhi;
