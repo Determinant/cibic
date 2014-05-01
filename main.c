@@ -52,11 +52,23 @@ void print_sem() {
 /*    cnode_debug_print(ast_root, 1); */
 }
 
+void lib_generate() {
+    FILE *f = fopen("lib.s", "r");     
+    static char buff[1024];
+    if (f)
+    {
+        size_t size;
+        while ((size = fread(buff, 1, 1024, f)))
+            fwrite(buff, 1, size, stdout);
+    }
+}
+
 void print_ssa() {
     cibic_init();
     yyparse();
     semantics_check(ast_root);
     ssa_generate();
+    lib_generate();
 }
 
 void print_help() {

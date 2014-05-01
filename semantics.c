@@ -59,6 +59,9 @@ static CType_t basic_type_void;
 static CType_t builtin_printf;
 static CType_t builtin_scanf;
 static CType_t builtin_malloc;
+static CType_t builtin_print_int;
+static CType_t builtin_print_char;
+static CType_t builtin_print_string;
 static int scnt = 0;
 
 CTList_t funcs;
@@ -1523,7 +1526,7 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
 CType_t semantics_func(CNode *p, CScope_t scope) {
     CHECK_TYPE(p, FUNC_DEF);
     CVar_t head;
-    CType_t func, efunc, rt;
+    CType_t func, efunc = NULL, rt;
     cscope_enter(scope);                /* enter function local scope */
     head = semantics_declr(p->chd->next,
                                 semantics_typespec(p->chd, scope),
@@ -1558,7 +1561,6 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
             else if (!is_same_type(efunc, func))
                 ERROR((func->ast, "function defintion does not match the prototype"));
             type_merge(efunc, func);
-            free(func);
         }
 
         scope->top = ntop;
@@ -1573,7 +1575,12 @@ CType_t semantics_func(CNode *p, CScope_t scope) {
     }
     func->rec.func.local = semantics_comp(p->chd->next->next, scope);   /* check comp */
     cscope_exit(scope);                                        /* exit from local scope */
-
+    if (efunc)
+    {
+        type_merge(efunc, func);
+        free(func);
+        func = efunc;
+    }
     return func;
 }
 
@@ -1832,6 +1839,9 @@ void semantics_check(CNode *p) {
     basic_type_void = ctype_create("void", CVOID, NULL);
     builtin_printf = make_builtin_func("printf", basic_type_int);
     builtin_scanf = make_builtin_func("scanf", basic_type_int);
+    builtin_print_int = make_builtin_func("__print_int", basic_type_int);
+    builtin_print_char = make_builtin_func("__print_char", basic_type_int);
+    builtin_print_string = make_builtin_func("__print_string", basic_type_int);
     {
         CType_t vstar = ctype_create("", CPTR, NULL);
         vstar->rec.ref = basic_type_void;
@@ -1844,6 +1854,9 @@ void semantics_check(CNode *p) {
     cscope_push_type(scope, builtin_printf, NS_ID);
     cscope_push_type(scope, builtin_scanf, NS_ID);
     cscope_push_type(scope, builtin_malloc, NS_ID);
+    cscope_push_type(scope, builtin_print_int, NS_ID);
+    cscope_push_type(scope, builtin_print_char, NS_ID);
+    cscope_push_type(scope, builtin_print_string, NS_ID);
     /* const string counter */
     scnt = 0;
     /* check all definitions and declarations */
