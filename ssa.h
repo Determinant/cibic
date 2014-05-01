@@ -34,6 +34,7 @@ struct COpr {
     CRange_t range;
     int reg;        /* -1 for spilled */
     COpr_t par;     /* union-find */
+    COpr_t cval;
 };
 
 typedef struct COList COList;
@@ -58,13 +59,15 @@ struct CInst {
         ADDR,   /* get address */
         MUL, DIV, MOD, ADD, SUB,
         SHL, SHR, AND, XOR, OR,
-        LOR, LAND, NEG, NOR, SEQ,
-        EQ, NE, LT, GT, LE, GE
+        LOR, LAND, NOR,
+        EQ, NE, LT, GT, LE, GE,
+        NEG
     } op;
     COpr_t dest, src1, src2;
     CInst_t next, prev;
     int id;
     int is_def;
+    int bret;
 };
 
 typedef struct CPhi CPhi;

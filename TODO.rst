@@ -18,9 +18,10 @@ TODO
   - calculate type memory footprint at proper time
   - function to 'pointer to function' conversion (according the std 6.3.2/4) (done)
   - vague var table management (done)
-  - incorrect address reference `&`
+  - incorrect address reference ``&``
   - const function name (done)
   - remove the redundant edge from blocks that break a loop
+  - ``<<`` operation in pre-calculation
 
 - Not Implemented:
 

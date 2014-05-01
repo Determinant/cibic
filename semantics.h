@@ -39,6 +39,7 @@ struct CVar {
     int start;
     CNode *ast;
     CBList_t defsite;
+    int global;
     /* the following fields are used for renaming */
     int cnt;
     COList_t stack;
@@ -74,8 +75,8 @@ struct CType {
             CVar_t local;
             CType_t ret;
             CNode *body;
-            int params_size;
             int local_size;
+            int params_size;
         } func;               /* for a function */
     } rec;
     int size;   /* memory footprint */
