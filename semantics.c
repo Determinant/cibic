@@ -268,6 +268,7 @@ CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     cv->name = name;
     cv->type = type;
     cv->ast = ast;
+    cv->initr = NULL;
     cv->defsite = NULL;
     cv->global = 0;
     return cv;
@@ -745,7 +746,10 @@ CVar_t semantics_decl(CNode *p, CScope_t scope) {
                 res = var;
                 /* check initializer */
                 if (initr->type == INITR)
+                {
+                    var->initr = initr;
                     semantics_initr(initr, scope, var->type);
+                }
             }
         }
         useful = 1;
@@ -1401,12 +1405,13 @@ CVar_t semantics_if(CNode *p, CScope_t scope) {
     cscope_exit(scope);
     if (body2->type != NOP)
     {
-        CVar_t t;
+        CVar_t h, t;
         cscope_enter(scope);
-        if ((t = semantics_stmt(p->chd->next->next, scope)))
+        if ((h = semantics_stmt(p->chd->next->next, scope)))
         {
+            for (t = h; t->next; t = t->next);
             t->next = res;
-            res = t;
+            res = h;
         }
         cscope_exit(scope);
     }
@@ -1501,17 +1506,38 @@ CVar_t semantics_comp(CNode *p, CScope_t scope) {
           *stmts = p->chd->next, *i;
     CVar_t res = NULL;
     if (decls->chd->type != NOP)
+    {
+        CVList autos, *tail = &autos;
+        autos.next = NULL;
         for (i = decls->chd; i; i = i->next)
         {
             CVar_t vlist = semantics_decl(i, scope);
+            CVList_t sa = NULL, a;
             if (vlist)  /* collect local vars */
             {
-                CVar_t p;
-                for (p = vlist; p->next; p = p->next);
-                p->next = res;
+                CVar_t v;
+                for (v = vlist; v->next; v = v->next)
+                {
+                    a = NEW(CVList);
+                    a->var = v;
+                    a->next = sa;
+                    sa = a;
+                }
+                a = NEW(CVList);
+                a->var = v;
+                a->next = sa;
+                sa = a;
+                v->next = res;
                 res = vlist;
             }
+            if (sa)
+            {
+                tail->next = sa;
+                for (tail = sa; tail->next; tail = tail->next);
+            }
         }
+        p->ext.autos = autos.next;
+    }
     if (stmts->chd->type != NOP)
         for (i = stmts->chd; i; i = i->next)
         {

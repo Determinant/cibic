@@ -32,9 +32,11 @@ struct COpr {
 
     int sub;
     int dep;
+    int mod;
+    int reg;        /* -1 for spilled */
+    CType_t type;
     CInst_t def;
     CRange_t range;
-    int reg;        /* -1 for spilled */
     COpr_t par;     /* union-find */
     COpr_t cval;
 };
@@ -134,8 +136,9 @@ typedef struct CInterv {
     CRange_t range;
 } CInterv;
 
-void ssa_generate();
+void ssa_generate(void);
 COpr_t cinterv_repr(COpr_t opr);
+void cinst_print(FILE *stream, CInst_t inst);
 extern int gbbase;
 extern CBlock_t entry;
 extern COList_t defs;

@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
+#include "ast.h"
 #include "ssa.h"
 #include "mips.h"
 
@@ -16,7 +18,39 @@ void mips_prologue() {
         printf("\t.align 2\n");
         printf("_%s:\n", var->name);
         var->start = -1;
-        printf("\t.space %d\n", calc_size(var->type));
+        if (var->initr)
+        {
+            CNode *initr = var->initr->chd;
+            assert(var->initr->rec.subtype == INITR_NORM);
+            switch (initr->ext.type->type)
+            {
+                case CINT:
+                    printf("\t.word %d\n", initr->ext.const_val);
+                    break;
+                case CCHAR:
+                    printf("\t.byte %d\n", initr->ext.const_val);
+                    break;
+                case CPTR:
+                    {
+                        CType_t ref = initr->ext.type->rec.ref;
+                        printf("\t.word ");
+                        switch (ref->type)
+                        {
+                            case CFUNC:
+                                printf("%s\n", initr->rec.strval);
+                                break;
+                            case CCHAR:
+                                printf("_str_%d\n", ((CSList_t)initr->ext.const_val)->id);
+                                break;
+                            default: assert(0);
+                        }
+                    }
+                    break;
+                default: assert(0);
+            }
+        }
+        else
+            printf("\t.space %d\n", calc_size(var->type));
     }
     for (s = cstrs; s; s = s->next)
     {
@@ -29,7 +63,7 @@ void mips_prologue() {
 
 void mips_load(int reg, COpr_t opr) {
     CVar_t var = cinterv_repr(opr)->info.var;
-    CType_t type = var->type;
+    CType_t type = opr->type;
     if (type->type == CSTRUCT ||
         type->type == CUNION ||
         type->type == CARR)
@@ -51,7 +85,7 @@ void mips_load(int reg, COpr_t opr) {
 
 void mips_store(int reg, COpr_t opr) {
     CVar_t var = cinterv_repr(opr)->info.var;
-    CType_t type = var->type;
+    CType_t type = opr->type;
     const char *l = type->type == CCHAR ? "sb" : "sw";
     /* TODO: struct */
     if (var->global)
@@ -76,7 +110,7 @@ int mips_to_reg(COpr_t opr, int reg0) {
         printf("\tla $%d, %s\n", reg0, opr->info.str);
         return reg0;
     }
-    if (opr->reg != -1) return opr->reg;
+    if (opr->reg != -1) return cinterv_repr(opr)->reg;
     mips_load(reg0, opr);
     return reg0;
 }
@@ -96,7 +130,7 @@ void mips_space_alloc() {
         COpr_t opr = d->opr;
         if (opr->kind == TMP && opr->par == opr)
         {
-            int t = opr->info.var->type->type;
+            int t = opr->type->type;
             tmp_size += align_shift(tmp_size);
             opr->info.var->start = tmp_size;
             if (t == CSTRUCT || t == CUNION || t == CARR)
@@ -104,7 +138,7 @@ void mips_space_alloc() {
             else if (t == CVOID)
                 tmp_size += INT_SIZE;
             else
-                tmp_size += calc_size(opr->info.var->type);
+                tmp_size += calc_size(opr->type);
         }
     }
     for (p = entry; p; p = p->next)
@@ -125,7 +159,7 @@ void mips_space_alloc() {
                     offset += PTR_SIZE;
                 else
                 {
-                    CType_t t = arg->info.var->type;
+                    CType_t t = arg->type;
                     if (t->type == CARR)
                         offset += PTR_SIZE;
                     else
@@ -134,7 +168,7 @@ void mips_space_alloc() {
             }
             else if (i->op == CALL)
             {
-                CType_t rt = i->dest->info.var->type;
+                CType_t rt = i->dest->type;
                 if (offset > arg_size)
                     arg_size = offset;
                 offset = 0;
@@ -180,22 +214,37 @@ void mips_space_alloc() {
 
 void mips_func_begin() {
     int fsize = func->rec.func.frame_size;
-    printf("\taddiu $sp, $sp, -%d\n", fsize);
-    printf("\tsw $31, %d($sp)\n", fsize - 4);
+    if (fsize < 0x8000)
+        printf("\taddiu $sp, $sp, -%d\n", fsize);
+    else
+    {
+        printf("\tli $%d, %d\n", reg_v0, -fsize);
+        printf("\taddu $sp, $sp, $%d\n", reg_v0);
+    }
+    printf("\tsw $31, %d($sp) #%s\n", fsize - 4, func->name);
 }
 
 void mips_func_end() {
     int fsize = func->rec.func.frame_size;
     printf("_ret_%s:\n", func->name);
     printf("\tlw $31, %d($sp)\n", fsize - 4);
-    printf("\taddiu $sp, $sp, %d\n", fsize);
+    if (fsize < 0x8000)
+        printf("\taddiu $sp, $sp, %d\n", fsize);
+    else
+    {
+        printf("\tli $%d, %d\n", reg_v0, fsize);
+        printf("\taddu $sp, $sp, $%d\n", reg_v0);
+    }
     printf("\tjr $31\n");
 }
 
 void mips_generate() {
     CBlock_t p;
     mips_space_alloc();
-    printf("%s:\n", func->name);
+    if (strcmp(func->name, "main"))
+        printf("_func_%s:\n",func->name);
+    else
+        printf("main:\n");
     mips_func_begin();
     for (p = entry; p; p = p->next)
     {
@@ -205,6 +254,8 @@ void mips_generate() {
         for (i = ih->next; i != ih; i = i->next)
         {
             int flag = 1, swap;
+            printf("# ");
+            cinst_print(stdout, i);
             switch (i->op)
             {
                 case LOAD:
@@ -241,9 +292,15 @@ void mips_generate() {
                     break;
                 case ARR:
                     {
+                        CType_t type = i->src1->type;
                         int arr = mips_to_reg(i->src1, reg_v0);
                         int rd;
-                        const char *l = i->dest->info.var->type->type == CCHAR ? "lb" : "lw";
+                        const char *l;
+                        if (type->type == CARR)
+                            type = type->rec.arr.elem;
+                        else
+                            type = type->rec.ref;
+                        l = type->type == CCHAR ? "lb" : "lw";
                         if (i->src2->kind == IMM)
                         {
                             rd = i->dest->reg;
@@ -264,9 +321,15 @@ void mips_generate() {
                     break;
                 case WARR:
                     {
+                        CType_t type = i->dest->type;
                         int arr = mips_to_reg(i->dest, reg_v0);
-                        const char *s = i->dest->info.var->type->type == CCHAR ? "sb" : "sw";
+                        const char *s;
                         int rs;
+                        if (type->type == CARR)
+                            type = type->rec.arr.elem;
+                        else
+                            type = type->rec.ref;
+                        s = type->type == CCHAR ? "sb" : "sw";
                         if (i->src2->kind == IMM)
                         {
                             rs = mips_to_reg(i->src1, reg_v1);
@@ -285,14 +348,14 @@ void mips_generate() {
                     {
                         int rs = mips_to_reg(i->src1, reg_v0);
                         /* TODO: push struct */
-                        printf("\tsw $%d, %d($sp)\n", rs, i->offset);
+                        printf("\tsw $%d, %d($sp) # push\n", rs, i->offset);
                     }
                     break;
                 case CALL:
                     {
                         int rd = i->dest->reg;
                         if (i->src1->kind == IMMF)
-                            printf("\tjal %s\n", i->src1->info.str);
+                            printf("\tjal _func_%s\n", i->src1->info.str);
                         else
                             printf("\tjalr $%d\n", mips_to_reg(i->src1, reg_v0));
                         if (rd != -1) 
@@ -372,7 +435,9 @@ void mips_generate() {
                         i->src1 = i->src2;
                         i->src2 = t;
                     }
-                    if (i->src2->kind == IMM)
+                    if (i->src2->kind == IMM &&
+                            i->src2->info.imm > -0x7fff &&
+                            i->src2->info.imm < 0x8000)
                     {
                         switch (i->op)
                         {

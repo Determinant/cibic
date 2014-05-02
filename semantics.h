@@ -45,6 +45,7 @@ struct CVar {
     CType_t type;
     int start;
     CNode *ast;
+    CNode *initr;
     CBList_t defsite;
     int global;
     /* the following fields are used for renaming */
