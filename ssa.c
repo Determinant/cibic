@@ -333,6 +333,20 @@ void ssa_generate() {
     }
 }
 
+#define POINTER_CONV(inst) \
+do { \
+    if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION) \
+    { \
+        /* convert to pointer type */ \
+        CType_t a = ctype_create("", CPTR, p); \
+        a->rec.ref = rt->rec.arr.elem; \
+        (inst)->op = ADD; \
+        (inst)->dest->type = a; \
+    } \
+    else (inst)->op = ARR; \
+} while (0)
+
+
 COpr_t ssa_exp_(CNode *p, CBlock_t *, CInst_t, CBlock_t);
 COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
     CNode *post = p->chd->next;
@@ -360,16 +374,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 base->dest->type = rt;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2 = off->dest;
-                if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION)
-                {
-                    /* convert to pointer type */
-                    CType_t a = ctype_create("", CPTR, p);
-                    a->rec.ref = rt->rec.arr.elem;
-                    base->op = ADD;
-                    base->dest->type = a;
-                }
-                else 
-                    base->op = ARR;
+                POINTER_CONV(base);
             }
             break;
         case POSTFIX_DOT:
@@ -378,11 +383,11 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 base->dest->kind = TMP;
                 base->dest->info.var = ctmp_create();
                 base->dest->type = rt;
-                base->op = ARR;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2 = copr_create();
                 base->src2->kind = IMM;
                 base->src2->info.imm = p->ext.offset;
+                POINTER_CONV(base);
             }
             break;
         case POSTFIX_PTR:
@@ -391,11 +396,11 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 base->dest->kind = TMP;
                 base->dest->info.var = ctmp_create();
                 base->dest->type = rt;
-                base->op = ARR;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2 = copr_create();
                 base->src2->kind = IMM;
                 base->src2->info.imm = p->ext.offset;
+                POINTER_CONV(base);
             }
             break;
         case POSTFIX_CALL:
@@ -591,16 +596,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                         inst->dest->kind = TMP;
                         inst->dest->info.var = ctmp_create();
                         inst->dest->type = rt;
-                        if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION)
-                        {
-                            /* convert to pointer type */
-                            CType_t a = ctype_create("", CPTR, p);
-                            a->rec.ref = rt->rec.arr.elem;
-                            inst->op = ADD;
-                            inst->dest->type = a;
-                        }
-                        else 
-                            inst->op = ARR;
+                        POINTER_CONV(inst);
                         cblock_append(*cur, inst);
                         return inst->dest;
                     }

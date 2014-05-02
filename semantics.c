@@ -1135,6 +1135,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             if (!(t1 == CSTRUCT || t1 == CUNION))
                 ERROR((p, "request for the member in something not a structure or union"));
             {
+                calc_size(op1.type);
                 CVar_t fv = ctable_lookup(op1.type->rec.st.fields,
                                         post->chd->rec.strval);
                 if (!fv)
