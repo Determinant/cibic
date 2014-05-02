@@ -64,9 +64,10 @@ void mips_prologue() {
 void mips_load(int reg, COpr_t opr) {
     CVar_t var = cinterv_repr(opr)->info.var;
     CType_t type = opr->type;
-    if (type->type == CSTRUCT ||
+    if (opr->kind == VAR &&
+        (type->type == CSTRUCT ||
         type->type == CUNION ||
-        type->type == CARR)
+        type->type == CARR))
     {
         if (var->global)
             printf("\tla $%d, _%s\n", reg, var->name);
@@ -238,6 +239,8 @@ void mips_func_end() {
     printf("\tjr $31\n");
 }
 
+#define IN_IMM(x) (-0x8000 <= (x) && (x) < 0x8000)
+
 void mips_generate() {
     CBlock_t p;
     mips_space_alloc();
@@ -303,17 +306,38 @@ void mips_generate() {
                         l = type->type == CCHAR ? "lb" : "lw";
                         if (i->src2->kind == IMM)
                         {
+                            int index = i->src2->info.imm;
                             rd = i->dest->reg;
                             if (rd == -1) rd = reg_v1;
-                            printf("\t%s $%d, %d($%d)\n", l, rd, i->src2->info.imm, arr);
+                            /*
+                            if (type->type == CSTRUCT || type->type == CUNION)
+                            {
+                                if (IN_IMM(index))
+                                    printf("\taddiu $%d, $%d, %d\n", rd, arr, index);
+                                else
+                                {
+                                    printf("\tli $%d, %d\n", reg_v1, index);
+                                    printf("\taddu $%d, $%d, $%d\n", rd, arr, reg_v1);
+                                }
+                            }
+                            else
+                            */
+                                printf("\t%s $%d, %d($%d)\n", l, rd, index, arr);
                         }
                         else
                         {
                             int index = mips_to_reg(i->src2, reg_v1);
-                            printf("\taddu $%d, $%d, $%d\n", index, arr, index);
                             rd = i->dest->reg;
                             if (rd == -1) rd = reg_v0;
-                            printf("\t%s $%d, 0($%d)\n", l, rd, index);
+                            /*
+                            if (type->type == CSTRUCT || type->type == CUNION)
+                                printf("\taddu $%d, $%d, $%d\n", rd, arr, index);
+                            else
+                            */
+                            {
+                                printf("\taddu $%d, $%d, $%d\n", index, arr, index);
+                                printf("\t%s $%d, 0($%d)\n", l, rd, index);
+                            }
                         }
                         if (i->dest->reg == -1 || i->dest->kind == VAR)
                             mips_store(rd, i->dest);
@@ -368,10 +392,13 @@ void mips_generate() {
                     break;
                 case RET:
                     {
-                        if (i->src1->reg != -1)
-                            printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
-                        else
-                            mips_to_reg(i->src1, reg_v0);
+                        if (i->src1)
+                        {
+                            if (i->src1->reg != -1)
+                                printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
+                            else
+                                mips_to_reg(i->src1, reg_v0);
+                        }
                         printf("\tj _ret_%s\n", func->name);
                     }
                     break;
@@ -435,9 +462,7 @@ void mips_generate() {
                         i->src1 = i->src2;
                         i->src2 = t;
                     }
-                    if (i->src2->kind == IMM &&
-                            i->src2->info.imm > -0x7fff &&
-                            i->src2->info.imm < 0x8000)
+                    if (i->src2->kind == IMM && IN_IMM(i->src2->info.imm))
                     {
                         switch (i->op)
                         {

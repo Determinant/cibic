@@ -360,7 +360,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 base->dest->type = rt;
                 base->src1 = ssa_exp_(p->chd, cur, NULL, succ);
                 base->src2 = off->dest;
-                if (rt->type == CARR)
+                if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION)
                 {
                     /* convert to pointer type */
                     CType_t a = ctype_create("", CPTR, p);
@@ -571,30 +571,38 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 }
                 else if (op == '*' && !p->chd->next)
                 {
+                    if (lval)
                     {
-                        if (lval)
+                        lval->op = WARR;
+                        lval->dest = ssa_exp_(p->chd, cur, NULL, succ);
+                        lval->src2 = copr_create();
+                        lval->src2->kind = IMM;
+                        lval->src2->info.imm = 0;
+                        return lval->dest;
+                    }
+                    else
+                    {
+                        CType_t rt = p->ext.type;
+                        inst->src1 = ssa_exp_(p->chd, cur, NULL, succ);
+                        inst->src2 = copr_create();
+                        inst->src2->kind = IMM;
+                        inst->src2->info.imm = 0;
+                        inst->dest = copr_create();
+                        inst->dest->kind = TMP;
+                        inst->dest->info.var = ctmp_create();
+                        inst->dest->type = rt;
+                        if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION)
                         {
-                            lval->op = WARR;
-                            lval->dest = ssa_exp_(p->chd, cur, NULL, succ);
-                            lval->src2 = copr_create();
-                            lval->src2->kind = IMM;
-                            lval->src2->info.imm = 0;
-                            return lval->dest;
+                            /* convert to pointer type */
+                            CType_t a = ctype_create("", CPTR, p);
+                            a->rec.ref = rt->rec.arr.elem;
+                            inst->op = ADD;
+                            inst->dest->type = a;
                         }
-                        else
-                        {
+                        else 
                             inst->op = ARR;
-                            inst->src1 = ssa_exp_(p->chd, cur, NULL, succ);
-                            inst->src2 = copr_create();
-                            inst->src2->kind = IMM;
-                            inst->src2->info.imm = 0;
-                            inst->dest = copr_create();
-                            inst->dest->kind = TMP;
-                            inst->dest->info.var = ctmp_create();
-                            inst->dest->type = p->ext.type;
-                            cblock_append(*cur, inst);
-                            return inst->dest;
-                        }
+                        cblock_append(*cur, inst);
+                        return inst->dest;
                     }
                 }
                 else if (op == OPT_AND)
