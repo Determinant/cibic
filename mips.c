@@ -107,7 +107,7 @@ int mips_to_reg(COpr_t opr, int reg0) {
     }
     else if (opr->kind == IMMF)
     {
-        printf("\tla $%d, %s\n", reg0, opr->info.str);
+        printf("\tla $%d, _func_%s\n", reg0, opr->info.str);
         return reg0;
     }
     if (opr->reg != -1) return cinterv_repr(opr)->reg;
