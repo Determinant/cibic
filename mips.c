@@ -64,10 +64,9 @@ void mips_prologue() {
 void mips_load(int reg, COpr_t opr) {
     CVar_t var = cinterv_repr(opr)->info.var;
     CType_t type = opr->type;
-    if (opr->kind == VAR &&
-        (type->type == CSTRUCT ||
+    if (type->type == CSTRUCT ||
         type->type == CUNION ||
-        type->type == CARR))
+        type->type == CARR)
     {
         if (var->global)
             printf("\tla $%d, _%s\n", reg, var->name);
