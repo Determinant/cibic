@@ -31,6 +31,7 @@ struct COpr {
     } info;
 
     int sub;
+    int dep;
     CInst_t def;
     CRange_t range;
     int reg;        /* -1 for spilled */
@@ -134,6 +135,7 @@ typedef struct CInterv {
 } CInterv;
 
 void ssa_generate();
+COpr_t cinterv_repr(COpr_t opr);
 extern int gbbase;
 extern CBlock_t entry;
 extern COList_t defs;

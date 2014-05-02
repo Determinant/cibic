@@ -22,6 +22,7 @@ CType_t func;
 COpr_t copr_create() {
     COpr_t opr = NEW(COpr);
     opr->cval = NULL;
+    opr->dep = 0;
     return opr;
 }
 
@@ -108,13 +109,13 @@ void cfg_clear() {
         for (p = cfg.head[i]; p; p = np)
         {
             np = p->next;
-            free(p);
+            /* free(p); */
         }
         cfg.head[i] = NULL;
         for (p = cfg.rhead[i]; p; p = np)
         {
             np = p->next;
-            free(p);
+            /* free(p); */
         }
         cfg.rhead[i] = NULL;
     }
@@ -128,7 +129,7 @@ void dtree_clear() {
         for (p = dtree.head[i]; p; p = np)
         {
             np = p->next;
-            free(p);
+            /* free(p); */
         }
         dtree.head[i] = NULL;
     }
@@ -329,8 +330,8 @@ void ssa_generate() {
     }
 }
 
-COpr_t ssa_exp_(CNode *p, CBlock_t, CInst_t, CBlock_t);
-COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
+COpr_t ssa_exp_(CNode *p, CBlock_t *, CInst_t, CBlock_t);
+COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
     CNode *post = p->chd->next;
     CType_t rt = p->ext.type;
     CInst_t base = cinst_create();
@@ -347,7 +348,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 off->src2 = copr_create();
                 off->src2->kind = IMM;
                 off->src2->info.imm = calc_size(rt);
-                cblock_append(cur, off);
+                cblock_append(*cur, off);
 
                 base->dest = copr_create();
                 base->dest->kind = TMP;
@@ -406,7 +407,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     pi->src1 = ssa_exp_(arg, cur, lval, succ);
                     /* pi->next = ps;
                     ps = pi; */
-                    cblock_append(cur, pi);
+                    cblock_append(*cur, pi);
                 }
                 /*
                 for (; ps; ps = t)
@@ -429,7 +430,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                 {
                     base->dest = tins->dest;
                     cblock_append(succ, base);
-                    free(tins);
+                    /* free(tins); */
                 }
                 else
                 {
@@ -459,16 +460,16 @@ COpr_t ssa_postfix(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
         lval->op = WARR;
         lval->dest = base->src1;
         lval->src2 = base->src2;
-        free(base);
+        /* free(base); */
         return lval->dest;
     }
-    cblock_append(cur, base);
+    cblock_append(*cur, base);
     return base->dest;
 }
 
 #define IS_PTR(tt) ((tt) == CPTR || (tt) == CARR)
-COpr_t ssa_exp(CNode *, CBlock_t, int);
-COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
+COpr_t ssa_exp(CNode *, CBlock_t *, int);
+COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
     COpr_t res;
     CInst_t inst = cinst_create();
     switch (p->type)
@@ -527,8 +528,9 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     ssa_exp_(p->chd, cur, inst, succ);
                     if (inst->op == MOVE)
                     {
-                        CInst_t last = cblock_getback(cur);
-                        if (last && last->dest == inst->src1)
+                        CInst_t last = cblock_getback(*cur);
+                        if (last && last->dest->kind == TMP
+                                && last->dest == inst->src1)
                         {
                             free(last->dest);
                             last->dest = inst->dest;
@@ -537,21 +539,21 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                         }
                         else 
                         {
-                            cblock_append(cur, inst);
+                            cblock_append(*cur, inst);
                             return inst->dest;
                         }
                     }
                     else
                     {
                         CInst_t tins = cinst_create();
-                        cblock_append(cur, inst);
+                        cblock_append(*cur, inst);
                         tins->op = ARR;
                         tins->src1 = inst->dest;    /* base */
                         tins->src2 = inst->src2;    /* displacement */
                         tins->dest = copr_create();
                         tins->dest->kind = TMP;
                         tins->dest->info.var = ctmp_create(p->ext.type);
-                        cblock_append(cur, tins);
+                        cblock_append(*cur, tins);
                         return tins->dest;
                     }
                 }
@@ -577,10 +579,89 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                             inst->dest = copr_create();
                             inst->dest->kind = TMP;
                             inst->dest->info.var = ctmp_create(p->ext.type);
-                            cblock_append(cur, inst);
+                            cblock_append(*cur, inst);
                             return inst->dest;
                         }
                     }
+                }
+                else if (op == OPT_AND)
+                {
+                    CBlock_t else_h = cblock_create(1), else_t = else_h,
+                             one_blk = cblock_create(1),
+                             zero_blk = cblock_create(1),
+                             next_blk = cblock_create(1);
+                    COpr_t r0 = ssa_exp_(p->chd, cur, NULL, succ),
+                           r1 = ssa_exp_(p->chd->next, &else_t, NULL, succ);
+                    CInst_t b, a0, a1;
+                    CPhi_t m = NEW(CPhi);
+                    /* constant opt */
+                    a0 = cinst_create();
+                    a0->op = MOVE;
+                    a0->dest = copr_create();
+                    a0->dest->kind = TMP;
+                    a0->dest->info.var = ctmp_create(p->ext.type); /* int */
+                    a0->src1 = copr_create();
+                    a0->src1->kind = IMM;
+                    a0->src1->info.imm = 0;
+                    cblock_append(zero_blk, a0);
+
+                    a1 = cinst_create();
+                    a1->op = MOVE;
+                    a1->dest = copr_create();
+                    a1->dest->kind = TMP;
+                    a1->dest->info.var = ctmp_create(p->ext.type);
+                    a1->src1 = copr_create();
+                    a1->src1->kind = IMM;
+                    a1->src1->info.imm = 1;
+                    cblock_append(one_blk, a1);
+
+                    m->dest = copr_create();
+                    m->dest->kind = TMP;
+                    m->dest->info.var = ctmp_create(p->ext.type);
+                    m->oprs = (COpr_t *)malloc(sizeof(COpr_t) * 2);
+                    m->oprs[0] = a0->dest;
+                    m->oprs[1] = a1->dest;
+                    cblock_pappend(next_blk, m);
+
+                    b = cinst_create();
+                    b->op = BEQZ;
+                    b->src1 = r0;
+                    b->dest = copr_create();
+                    b->dest->kind = IMM;
+                    b->dest->info.imm = zero_blk->id + gbbase;
+                    cblock_append(*cur, b);
+
+                    b = cinst_create();
+                    b->op = BEQZ;
+                    b->src1 = r1;
+                    b->dest = copr_create();
+                    b->dest->kind = IMM;
+                    b->dest->info.imm = zero_blk->id + gbbase;
+                    cblock_append(else_t, b);
+                    zero_blk->ref = 1;
+
+                    b = cinst_create();
+                    b->op = GOTO;
+                    b->dest = copr_create();
+                    b->dest->kind = IMM;
+                    b->dest->info.imm = next_blk->id + gbbase;
+                    cblock_append(one_blk, b);
+                    next_blk->ref = 1;
+
+                    DBLINK(*cur, else_h);
+                    DBLINK(else_t, one_blk);
+                    DBLINK(one_blk, zero_blk);
+                    DBLINK(zero_blk, next_blk);
+
+                    cfg_add_edge(*cur, else_h);
+                    cfg_add_edge(*cur, zero_blk);
+                    cfg_add_edge(else_t, one_blk);
+                    cfg_add_edge(else_t, zero_blk);
+                    cfg_add_edge(one_blk, next_blk);
+                    cfg_add_edge(zero_blk, next_blk);
+
+                    *cur = next_blk;
+                    return m->dest;
                 }
                 else if (op == '+' && IS_PTR(p->ext.type->type))
                 {
@@ -607,8 +688,8 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     inst->dest->info.var = ctmp_create(p->ext.type);
                     inst->src1 = lhs;
                     inst->src2 = index->dest;
-                    cblock_append(cur, index);
-                    cblock_append(cur, inst);
+                    cblock_append(*cur, index);
+                    cblock_append(*cur, inst);
                     return inst->dest;
                 }
                 else if (op == '-' && IS_PTR(p->chd->ext.type->type))
@@ -660,8 +741,8 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                         inst->src1 = lhs;
                         inst->src2 = diff->dest;
                     }
-                    cblock_append(cur, diff);
-                    cblock_append(cur, inst);
+                    cblock_append(*cur, diff);
+                    cblock_append(*cur, inst);
                     return inst->dest;
                 }
                 else if (op == '&' && !p->chd->next)
@@ -680,7 +761,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                     inst->dest = copr_create();
                     inst->dest->kind = TMP;
                     inst->dest->info.var = ctmp_create(p->ext.type);
-                    cblock_append(cur, inst);
+                    cblock_append(*cur, inst);
                     return inst->dest;
                 }
                 else
@@ -718,7 +799,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                         if (tins->op == MOVE)
                         {
                             inst->dest = tins->dest;
-                            cblock_append(cur, inst);
+                            cblock_append(*cur, inst);
                             free(tins);
                             return inst->dest;
                         }
@@ -735,9 +816,9 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                             tins2->dest = copr_create();
                             tins2->dest->kind = TMP;
                             tins2->dest->info.var = ctmp_create(p->ext.type);
-                            cblock_append(cur, inst);
-                            cblock_append(cur, tins);
-                            cblock_append(cur, tins2);
+                            cblock_append(*cur, inst);
+                            cblock_append(*cur, tins);
+                            cblock_append(*cur, tins2);
                             return tins2->dest;
                         }
                     }
@@ -822,7 +903,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
                                     inst->dest->kind = TMP;
                                     inst->dest->info.var = ctmp_create(p->ext.type);
                                 }
-                                cblock_append(cur, inst);
+                                cblock_append(*cur, inst);
                                 res = inst->dest;
                             }
                         }
@@ -832,7 +913,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t cur, CInst_t lval, CBlock_t succ) {
     return res;
 }
 
-COpr_t ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
+COpr_t ssa_exp(CNode *p, CBlock_t *cur, int discard_last) {
     CBlock_t succ = cblock_create(0);
     COpr_t res = ssa_exp_(p, cur, NULL, succ);
     CInst_t last; 
@@ -842,17 +923,17 @@ COpr_t ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
         {
             t = head->next;
             cblock_popfront(succ);
-            cblock_append(cur, t);
+            cblock_append(*cur, t);
         }
         free(succ);
     }
-    last = cblock_getback(cur);
+    last = cblock_getback(*cur);
     if (discard_last && last 
                     && last->dest->kind == TMP
                     && last->op != CALL) /* temporary not used */
     {
         ctmp_destroy(last->dest->info.var);
-        cblock_popback(cur);
+        cblock_popback(*cur);
         free(last);
     }
     return res;
@@ -861,39 +942,37 @@ COpr_t ssa_exp(CNode *p, CBlock_t cur, int discard_last) {
 CBlock_t ssa_stmt(CNode *, CBlock_t, CBlock_t);
 CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     CNode *exp = p->chd;
-    CBlock_t loop_blk = cblock_create(1), loop_t,
-             cond_blk = cblock_create(1),
+    CBlock_t loop_h = cblock_create(1), loop_t,
+             cond_h= cblock_create(1), cond_t = cond_h,
              next_blk = cblock_create(1);
     CInst_t j_inst = cinst_create(),
             if_inst = cinst_create();
 
-    DBLINK(cond_blk, next_blk);
-    loop_t = ssa_stmt(exp->next, loop_blk, next_blk);
+    if_inst->op = BNEZ;
+    if_inst->src1 = ssa_exp(exp, &cond_t, 0);
+    if_inst->dest = copr_create();
+    if_inst->dest->kind = IMM;
+    if_inst->dest->info.imm = loop_h->id + gbbase;
+    loop_h->ref = 1;
+    cblock_append(cond_t, if_inst);
 
-    DBLINK(loop_t, cond_blk);
-    cfg_add_edge(loop_t, cond_blk);
-
+    DBLINK(cond_t, next_blk);
+    loop_t = ssa_stmt(exp->next, loop_h, next_blk);
 
     j_inst->op = GOTO;
     j_inst->dest = copr_create();
     j_inst->dest->kind = IMM;
-    j_inst->dest->info.imm = cond_blk->id + gbbase;
-    cond_blk->ref = 1;
+    j_inst->dest->info.imm = cond_h->id + gbbase;
+    cond_h->ref = 1;
     cblock_append(cur, j_inst);
 
-    if_inst->op = BNEZ;
-    if_inst->src1 = ssa_exp(exp, cond_blk, 0);
-    if_inst->dest = copr_create();
-    if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_blk->id + gbbase;
-    loop_blk->ref = 1;
-    cblock_append(cond_blk, if_inst);
+    cfg_add_edge(cur, cond_h);
+    cfg_add_edge(cond_t, loop_h);
+    cfg_add_edge(loop_t, cond_h);
+    cfg_add_edge(cond_t, next_blk);
 
-    cfg_add_edge(cur, cond_blk);
-    cfg_add_edge(cond_blk, loop_blk);
-    cfg_add_edge(cond_blk, next_blk);
-
-    DBLINK(cur, loop_blk);
+    DBLINK(cur, loop_h);
+    DBLINK(loop_t, cond_h);
 
     return next_blk;
 }
@@ -902,41 +981,40 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     CNode *exp1 = p->chd,
           *exp2 = exp1->next,
           *exp3 = exp2->next;
-    CBlock_t loop_blk = cblock_create(1), loop_t,
-             cond_blk = cblock_create(1),
+    CBlock_t loop_h = cblock_create(1), loop_t,
+             cond_h = cblock_create(1), cond_t = cond_h,
              next_blk = cblock_create(1);
     CInst_t j_inst = cinst_create(),
             if_inst = cinst_create();
 
-    DBLINK(cond_blk, next_blk);
-    loop_t = ssa_stmt(exp3->next, loop_blk, next_blk);
+    if_inst->op = BNEZ;
+    if_inst->src1 = ssa_exp(exp2, &cond_t, 0);
+    if_inst->dest = copr_create();
+    if_inst->dest->kind = IMM;
+    if_inst->dest->info.imm = loop_h->id + gbbase;
+    loop_h->ref = 1;
+    cblock_append(cond_t, if_inst);
 
-    DBLINK(loop_t, cond_blk);
-    cfg_add_edge(loop_t, cond_blk);
+    DBLINK(cond_t, next_blk);
+    loop_t = ssa_stmt(exp3->next, loop_h, next_blk);
 
-    ssa_exp(exp1, cur, 1);
-    ssa_exp(exp3, loop_t, 1);
+    ssa_exp(exp1, &cur, 1);
+    ssa_exp(exp3, &loop_t, 1);
 
     j_inst->op = GOTO;
     j_inst->dest = copr_create();
     j_inst->dest->kind = IMM;
-    j_inst->dest->info.imm = cond_blk->id + gbbase;
-    cond_blk->ref = 1;
+    j_inst->dest->info.imm = cond_h->id + gbbase;
+    cond_h->ref = 1;
     cblock_append(cur, j_inst);
 
-    if_inst->op = BNEZ;
-    if_inst->src1 = ssa_exp(exp2, cond_blk, 0);
-    if_inst->dest = copr_create();
-    if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_blk->id + gbbase;
-    loop_blk->ref = 1;
-    cblock_append(cond_blk, if_inst);
+    cfg_add_edge(cur, cond_h);
+    cfg_add_edge(cond_t, loop_h);
+    cfg_add_edge(loop_t, cond_h);
+    cfg_add_edge(cond_t, next_blk);
 
-    cfg_add_edge(cur, cond_blk);
-    cfg_add_edge(cond_blk, loop_blk);
-    cfg_add_edge(cond_blk, next_blk);
-
-    DBLINK(cur, loop_blk);
+    DBLINK(cur, loop_h);
+    DBLINK(loop_t, cond_h);
 
     return next_blk;
 }
@@ -947,7 +1025,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     CBlock_t then_blk, then_t, next_blk,
              else_blk, else_t;
     CInst_t if_inst = cinst_create();
-    COpr_t rt = ssa_exp(p->chd, cur, 0);
+    COpr_t rt = ssa_exp(p->chd, &cur, 0);
     if (rt->kind == IMM)
     {
         if (rt->info.imm)
@@ -1016,7 +1094,7 @@ CBlock_t ssa_ret(CNode *p, CBlock_t cur) {
     CInst_t inst = cinst_create();
     inst->op = RET;
     if (p->chd->type != NOP)
-        inst->src1 = ssa_exp(p->chd, cur, 0);
+        inst->src1 = ssa_exp(p->chd, &cur, 0);
     cblock_append(cur, inst);
     return cur;
 }
@@ -1053,7 +1131,7 @@ CBlock_t ssa_stmt(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     switch (p->rec.subtype)
     {
         case STMT_EXP:
-            ssa_exp(p->chd, cur, 1);
+            ssa_exp(p->chd, &cur, 1);
             break;
         case STMT_COMP:
             cur = ssa_comp(p, cur, loop_exit);
@@ -1199,8 +1277,8 @@ void calc_dominant_frontier() {
         CBList_t p, np;
         for (p = df[i]; p; p = np)
         {
-            free(p);
             np = p->next;
+            free(p);
         }
         df[i] = NULL;
         if (dfset[i]) cpset_destroy(dfset[i]);
@@ -1329,8 +1407,10 @@ void renaming_dfs(CBlock_t blk) {
         for (t = 0; t < 2; t++)
         {
             COpr_t p = *(opr[t]);
-            if (!(p && p->kind == VAR)) continue;
-            /* free(p); */ /* memory leak */
+            if (!p) continue;
+            p->dep = 1;
+            if (p->kind != VAR) continue;
+            /* free(p); */  /* memory leak */
             *(opr[t]) = p->info.var->stack->opr;
         }
         if (dest)
@@ -1370,7 +1450,11 @@ void renaming_dfs(CBlock_t blk) {
         for (; pre->to != blk; pre = pre->next) j++;
         ph = y->phis;
         for (pi = ph->next; pi != ph; pi = pi->next)
-            pi->oprs[j] = pi->dest->info.var->stack->opr;
+        {
+            if (pi->dest->kind == VAR)
+                pi->oprs[j] = pi->dest->info.var->stack->opr;
+            pi->oprs[j]->dep = 1;
+        }
     }
     for (e = dtree.head[blk->id]; e; e = e->next)
         renaming_dfs(e->to);
@@ -1760,7 +1844,7 @@ void const_propagation() {
             if (flag)
             {
                 i->dest->cval = i->src1;
-                if (i->dest->kind == TMP)
+                if (i->dest->kind == TMP && !i->dest->dep)
                 {
                     i->next->prev = i->prev;
                     i->prev->next = i->next;

@@ -1312,7 +1312,11 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                                     res = exp_check_logical(op1, op2, p, '&');
                                     break;
                                 case OPT_SHL:
+                                    res = exp_check_bitwise(op1, op2, p, 'l');
+                                    break;
                                 case OPT_SHR:
+                                    res = exp_check_bitwise(op1, op2, p, 'r');
+                                    break;
                                 case '|':
                                 case '^':
                                     res = exp_check_bitwise(op1, op2, p, p->rec.subtype);
