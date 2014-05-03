@@ -100,7 +100,8 @@ CVar_t ctmp_create() {
 }
 
 void ctmp_destroy(CVar_t type) {
-    free(type->name); /* allocated dynamically */
+    /* allocated dynamically */
+    free(type->name);
     free(type);
 }
 
@@ -112,13 +113,13 @@ void cfg_clear() {
         for (p = cfg.head[i]; p; p = np)
         {
             np = p->next;
-            /* free(p); */
+            free(p);
         }
         cfg.head[i] = NULL;
         for (p = cfg.rhead[i]; p; p = np)
         {
             np = p->next;
-            /* free(p); */
+            free(p);
         }
         cfg.rhead[i] = NULL;
     }
@@ -132,7 +133,7 @@ void dtree_clear() {
         for (p = dtree.head[i]; p; p = np)
         {
             np = p->next;
-            /* free(p); */
+            free(p);
         }
         dtree.head[i] = NULL;
     }
@@ -443,7 +444,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
                 {
                     base->dest = tins->dest;
                     cblock_append(succ, base);
-                    /* free(tins); */
+                    free(tins);
                 }
                 else
                 {
@@ -475,7 +476,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
         lval->op = WARR;
         lval->dest = base->src1;
         lval->src2 = base->src2;
-        /* free(base); */
+        free(base);
         return lval->dest;
     }
     cblock_append(*cur, base);
@@ -484,7 +485,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
 
 #define IS_PTR(tt) ((tt) == CPTR || (tt) == CARR)
 COpr_t ssa_exp(CNode *, CBlock_t *, int);
-COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
+COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
     COpr_t res;
     CInst_t inst = cinst_create();
     switch (p->type)
@@ -1027,7 +1028,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
             }
     }
     return res;
-}
+}/*}}}*/
 
 COpr_t ssa_exp(CNode *p, CBlock_t *cur, int discard_last) {
     CBlock_t succ = cblock_create(0);
@@ -1056,7 +1057,7 @@ COpr_t ssa_exp(CNode *p, CBlock_t *cur, int discard_last) {
 }
 
 CBlock_t ssa_stmt(CNode *, CBlock_t, CBlock_t);
-CBlock_t ssa_while(CNode *p, CBlock_t cur) {
+CBlock_t ssa_while(CNode *p, CBlock_t cur) {/*{{{*/
     CNode *exp = p->chd;
     CBlock_t loop_h = cblock_create(1), loop_t,
              cond_h= cblock_create(1), cond_t = cond_h,
@@ -1091,9 +1092,9 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {
     DBLINK(loop_t, cond_h);
 
     return next_blk;
-}
+}/*}}}*/
 
-CBlock_t ssa_for(CNode *p, CBlock_t cur) {
+CBlock_t ssa_for(CNode *p, CBlock_t cur) {/*{{{*/
     CNode *exp1 = p->chd,
           *exp2 = exp1->next,
           *exp3 = exp2->next;
@@ -1133,9 +1134,9 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {
     DBLINK(loop_t, cond_h);
 
     return next_blk;
-}
+}/*}}}*/
 
-CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
+CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {/*{{{*/
     CNode *body1 = p->chd->next,
           *body2 = body1->next;
     CBlock_t then_blk, then_t, next_blk,
@@ -1204,7 +1205,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
         next_blk->ref = 1;
     }
     return next_blk;
-}
+}/*}}}*/
 
 CBlock_t ssa_ret(CNode *p, CBlock_t cur) {
     CInst_t inst = cinst_create();
@@ -1421,17 +1422,7 @@ void calc_dominant_frontier() {
         }
     }
     for (i = 0; i < bcnt; i++)
-    {
-        CBList_t p, np;
-        for (p = df[i]; p; p = np)
-        {
-            np = p->next;
-            free(p);
-        }
-        df[i] = NULL;
-        if (dfset[i]) cpset_destroy(dfset[i]);
         dfset[i] = cpset_create();
-    }
     for (i = 0; i < bcnt; i++)
         if (cfg.rhead[i] && cfg.rhead[i]->next)
         {
@@ -1470,10 +1461,7 @@ void insert_phi(CVList_t vars) {
     CVList_t vp;
     int i;
     for (i = 0; i < bcnt; i++)
-    {
-        if (phi[i]) cpset_destroy(phi[i]);
         phi[i] = cpset_create();
-    }
     for (vp = vars; vp; vp = vp->next)
     { /* for each variable */
         CVar_t var = vp->var;
@@ -1511,6 +1499,7 @@ void insert_phi(CVList_t vars) {
                     CPhi_t phi = NEW(CPhi);
                     CBList_t ndef;
                     phi->dest = copr_create();
+                    phi->dest->kind = VAR;
                     phi->dest->info.var = var;
                     phi->dest->type = var->type;
                     phi->oprs = (COpr_t *)malloc(sizeof(COpr_t) * y->pred);
@@ -1524,7 +1513,18 @@ void insert_phi(CVList_t vars) {
             }
         }
     }
-
+    for (i = 0; i < bcnt; i++)
+    {
+        CBList_t p, np;
+        for (p = df[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+        df[i] = NULL;
+        if (phi[i]) cpset_destroy(phi[i]);
+        if (dfset[i]) cpset_destroy(dfset[i]);
+    }
 }
 
 void renaming_dfs(CBlock_t blk) {
@@ -1621,9 +1621,13 @@ void renaming_vars(COList_t oprs) {
         if (p->opr->kind == VAR)
         {
             CInst_t ld = cinst_create();
-            p->opr->info.var->cnt = 0;
+            CVar_t var = p->opr->info.var;
+            var->cnt = 0;
             ld->op = LOAD;
-            ld->dest = p->opr;
+            ld->dest = copr_create();
+            ld->dest->kind = VAR;
+            ld->dest->info.var = var;
+            ld->dest->type = var->type;
             cblock_pushfront(entry, ld);
         }
     renaming_dfs(entry);
@@ -1676,17 +1680,7 @@ void add_range(COpr_t opr, CBlock_t blk, int end) {
 void build_intervals() {
     int i;
     for (i = 0; i < bcnt; i++)
-    {
-        COList_t p = live[i], np;
-        for (; p; p = np)
-        {
-            np = p->next;
-            free(p);
-        }
-        live[i] = NULL;
-        if (liveset[i]) cpset_destroy(liveset[i]);
         liveset[i] = cpset_create();
-    }
     for (i = 0; i < bcnt; i++)
     {
         int id = ord[i];
@@ -1772,6 +1766,17 @@ void build_intervals() {
             for (i = ph->prev; i != ph; i = i->prev)
                 cpset_erase(curlive, (long)i->dest);
         }
+    }
+    for (i = 0; i < bcnt; i++)
+    {
+        COList_t p = live[i], np;
+        for (; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+        live[i] = NULL;
+        if (liveset[i]) cpset_destroy(liveset[i]);
     }
 }
 
@@ -1993,6 +1998,17 @@ void const_propagation() {
 }
 
 void ssa_func(CType_t func) {
+#define AVS_ADD(_opr) \
+    do { \
+        if (cpset_insert(avs, (long)((_opr)->info.var))) \
+        { \
+            COList_t n = NEW(COList); \
+            n->next = all_oprs; \
+            n->opr = _opr; \
+            all_oprs = n; \
+        } \
+    } while (0)
+
     CBlock_t p;
     entry = cblock_create(1);
     CPSet_t vs = cpset_create(), avs = cpset_create();
@@ -2012,17 +2028,17 @@ void ssa_func(CType_t func) {
         for (i = head->next; i != head; i = i->next)
         {
             if (i->src1 && (i->src1->kind == VAR || i->src1->kind == TMP))
-                cpset_insert(avs, (long)(i->src1));
+                AVS_ADD(i->src1);
             if (i->src2 && (i->src2->kind == VAR || i->src2->kind == TMP))
-                cpset_insert(avs, (long)(i->src2));
+                AVS_ADD(i->src2);
             if (i->op == WARR)
-                cpset_insert(avs, (long)(i->dest));
+                AVS_ADD(i->dest);
             else if (i->dest && i->dest->kind == VAR)
             {
                 CVar_t d = i->dest->info.var;
                 CBList_t b = NEW(CBList);
                 cpset_insert(vs, (long)d);
-                cpset_insert(avs, (long)(i->dest));
+                AVS_ADD(i->dest);
                 b->next = d->defsite;
                 b->cblk = p;
                 d->defsite = b;
@@ -2030,6 +2046,7 @@ void ssa_func(CType_t func) {
         }
         blks[p->id] = p;
     }
+    cpset_destroy(avs);
     calc_dominant_frontier();
     {
         CPNode *p;
@@ -2042,19 +2059,12 @@ void ssa_func(CType_t func) {
                 n->var = (CVar_t)p->key;
                 vars = n;
             }
-            for (p = avs->head[i]; p; p = p->next)
-            {
-                COList_t n = NEW(COList);
-                n->next = all_oprs;
-                n->opr = (COpr_t)p->key;
-                all_oprs = n;
-            }
         }
     }
+    cpset_destroy(vs);
+
     insert_phi(vars);
     renaming_vars(all_oprs);
     const_propagation();
     register_alloc();
-    cpset_destroy(vs);
-    cpset_destroy(avs);
 }
