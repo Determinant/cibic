@@ -10,14 +10,15 @@
 
 static CGraph cfg, dtree;
 static CBlock_t blks[MAX_BLOCK];
+static COList_t raw_defs;
 static int bcnt;        /* block counter */
 static int tcnt;        /* temporary counter */
 
 /* for code generation */
 int gbbase;
 CBlock_t entry;
-COList_t defs;
 CType_t func;
+COList_t defs;
 
 COpr_t copr_create() {
     COpr_t opr = NEW(COpr);
@@ -141,7 +142,7 @@ void dtree_clear() {
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
-/*     printf("%d -> %d\n", from->id, to->id); */
+    fprintf(stderr, "%d -> %d\n", from->id, to->id);
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -1369,16 +1370,22 @@ int cpset_belongs(CPSet_t cps, long key) {
 }
 
 int dom[MAX_BLOCK], ord[MAX_BLOCK], vis[MAX_BLOCK], par[MAX_BLOCK], ocnt;
+int loop_tail[MAX_BLOCK];
 CPSet_t dfset[MAX_BLOCK], phi[MAX_BLOCK];
 CBList_t df[MAX_BLOCK];
 
 void dfs(CBlock_t u, int v) {
     CEdge *e;
-    if (vis[u->id] != -1) return;
     par[u->id] = v;
     vis[u->id] = 0;
     for (e = cfg.head[u->id]; e; e = e->next)
-        dfs(e->to, u->id);
+    {
+        CBlock_t v = e->to;
+        if (vis[v->id] == -1)
+            dfs(v, u->id);
+        else if (vis[v->id] == 0)
+            loop_tail[v->id] = u->id;
+    }
     vis[u->id] = ocnt;
     ord[ocnt++] = u->id;
 }
@@ -1396,6 +1403,7 @@ void calc_dominant_frontier() {
     ocnt = 0;
     memset(vis, -1, sizeof vis);
     memset(dom, -1, sizeof dom);
+    memset(loop_tail, -1, sizeof loop_tail);
     dfs(entry, -1);
     dom[vis[entry->id]] = vis[entry->id];
     while (ch)
@@ -1531,7 +1539,7 @@ void renaming_dfs(CBlock_t blk) {
     CInst_t ih = blk->insts, i;
     CPhi_t ph = blk->phis, pi;
     CEdge *e = cfg.head[blk->id];
-    COList_t defs = NULL, dn;
+    COList_t defl = NULL, dn;
     for (pi = ph->next; pi != ph; pi = pi->next)
     {
         COpr_t dest = pi->dest;
@@ -1545,8 +1553,8 @@ void renaming_dfs(CBlock_t blk) {
         var->stack = n;
         n2 = NEW(COList);
         n2->opr = dest;
-        n2->next = defs;
-        defs = n2;
+        n2->next = defl;
+        defl = n2;
     }
     for (i = ih->next; i != ih; i = i->next)
     {
@@ -1562,7 +1570,8 @@ void renaming_dfs(CBlock_t blk) {
             p = *(opr[t]);
             if (!(p && (p->kind == VAR || p->kind == TMP))) continue;
             /* free(p); */  /* memory leak */
-            (*(opr[t]) = p->info.var->stack->opr)->type = p->type;
+            (*opr[t] = p->info.var->stack->opr)->type = p->type;
+            (*opr[t])->info.var->weight++;
         }
         if (dest)
         {
@@ -1582,8 +1591,8 @@ void renaming_dfs(CBlock_t blk) {
                     var->stack = n;
                     n2 = NEW(COList);
                     n2->opr = dest;
-                    n2->next = defs;
-                    defs = n2;
+                    n2->next = defl;
+                    defl = n2;
                 }
             }
         }
@@ -1604,14 +1613,14 @@ void renaming_dfs(CBlock_t blk) {
     }
     for (e = dtree.head[blk->id]; e; e = e->next)
         renaming_dfs(e->to);
-    for (; defs; defs = dn)
+    for (; defl; defl = dn)
     {
-        CVar_t var = defs->opr->info.var;
+        CVar_t var = defl->opr->info.var;
         COList_t nf = var->stack->next;
         free(var->stack);
         var->stack = nf;
-        dn = defs->next;
-        free(defs);
+        dn = defl->next;
+        free(defl);
     }
 }
 
@@ -1657,28 +1666,98 @@ void mark_insts() {
 CPSet_t liveset[MAX_BLOCK];
 COList_t live[MAX_BLOCK];
 
+CRange_t crange_merge(CRange_t a, CRange_t b) {
+    CRange res;
+    CRange_t tail = &res;
+    res.next = NULL;
+    res.r = -1;
+    for (; a || b;)
+    {
+        if (a && (!b || (a->l < b->l || (a->l == b->l && a->r < b->r))))
+        {
+            if (tail->r >= a->l)
+                tail->r = a->r;
+            else
+            {
+                assert(tail->r < a->l);
+                tail->next = a;
+                tail = a;
+            }
+            a = a->next;
+        }
+        else
+        {
+            if (tail->r >= b->l)
+                tail->r = b->r;
+            else
+            {
+                assert(tail->r < b->l);
+                tail->next = b;
+                tail = b;
+            }
+            b = b->next;
+        }
+    }
+    tail->next = NULL;
+    return res.next;
+}
+
+void add_range_(COpr_t opr, int begin, int end) {
+    CRange_t range;
+    range = NEW(CRange);
+    range->l = begin;
+    range->r = end;
+    range->next = NULL;
+    opr->range = crange_merge(opr->range, range);
+}
+
 void add_range(COpr_t opr, CBlock_t blk, int end) {
     int dfid = opr->def->id;
     int begin;
-    CRange_t range, prev = opr->range;
     if (blk->first <= dfid && dfid <= blk->last)
         begin = dfid;
     else
         begin = blk->first;
-    if (prev && prev->l == end)
-        prev->l = begin;
-    else if (begin != end)
+    add_range_(opr, begin, end);
+}
+/*
+int low[MAX_BLOCK], dfn[MAX_BLOCK], dcnt;
+int loop_tail[MAX_BLOCK];
+*/
+
+/*
+void find_loop_tail(CBlock_t u) {
+    CEdge *e;
+    low[u->id] = bcnt;
+    dfn[u->id] = dcnt++;
+    for (e = cfg.head[u->id]; e; e = e->next)
     {
-        range = NEW(CRange);
-        range->l = begin;
-        range->r = end;
-        range->next = prev;
-        opr->range = range;
+        CBlock_t v = e->to;
+        if (dfn[v->id] == -1)
+        {
+            find_loop_tail(v);
+            if (low[v->id] < dfn[u->id] && low[v->id] < low[u->id])
+            {
+                low[u->id] = low[v->id];
+                loop_tail[u->id] = loop_tail[v->id];
+            }
+        }
+        else if (dfn[v->id] < dfn[u->id] && dfn[v->id] < low[u->id])
+        {
+            low[u->id] = dfn[v->id];
+            loop_tail[u->id] = u->id;
+        }
     }
 }
+*/
 
 void build_intervals() {
     int i;
+    /*
+    dcnt = 0;
+    memset(dfn, -1, sizeof dfn);
+    find_loop_tail(entry);
+    */
     for (i = 0; i < bcnt; i++)
         liveset[i] = cpset_create();
     for (i = 0; i < bcnt; i++)
@@ -1766,6 +1845,18 @@ void build_intervals() {
             for (i = ph->prev; i != ph; i = i->prev)
                 cpset_erase(curlive, (long)i->dest);
         }
+        if (loop_tail[id] != -1)
+        {
+            COList_t p;
+            for (p = live[id]; p; p = p->next) 
+                if (cpset_belongs(curlive, (long)p->opr))
+                {
+                    int j;
+                    for (j = loop_tail[id]; j != id; j = par[j])
+                        add_range_(p->opr, blks[j]->first, blks[j]->last + 1);
+                    add_range_(p->opr, b->first, b->last + 1);
+                }
+        }
     }
     for (i = 0; i < bcnt; i++)
     {
@@ -1784,42 +1875,6 @@ COpr_t cinterv_repr(COpr_t opr) {
     return opr->par == opr ? opr : (opr->par = cinterv_repr(opr->par));
 }
 
-CRange_t crange_merge(CRange_t a, CRange_t b) {
-    CRange res;
-    CRange_t tail = &res;
-    res.next = NULL;
-    res.r = -1;
-    for (; a || b;)
-    {
-        if (a && (!b || a->l < b->l))
-        {
-            if (tail->r == a->l)
-                tail->r = a->r;
-            else
-            {
-                assert(tail->r < a->l);
-                tail->next = a;
-                tail = a;
-            }
-            a = a->next;
-        }
-        else
-        {
-            if (tail->r == b->l)
-                tail->r = b->r;
-            else
-            {
-                assert(tail->r < b->l);
-                tail->next = b;
-                tail = b;
-            }
-            b = b->next;
-        }
-    }
-    tail->next = NULL;
-    return res.next;
-}
-
 void cinterv_union(COpr_t a, COpr_t b) {
     a = cinterv_repr(a);
     b = cinterv_repr(b);
@@ -1836,7 +1891,7 @@ void cinterv_union(COpr_t a, COpr_t b) {
 void init_def() {
     CBlock_t p;
     COList_t def;
-    defs = NULL;
+    raw_defs = NULL;
     for (p = entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
@@ -1846,15 +1901,15 @@ void init_def() {
             {
                 def = NEW(COList);
                 def->opr = i->dest;
-                def->next = defs;
-                defs = def;
+                def->next = raw_defs;
+                raw_defs = def;
             }
         for (pi = ph->next; pi != ph; pi = pi->next)
         {
             def = NEW(COList);
             def->opr = pi->dest;
-            def->next = defs;
-            defs = def;
+            def->next = raw_defs;
+            raw_defs = def;
         }
     }
     for (p = entry; p; p = p->next)
@@ -1871,7 +1926,7 @@ void init_def() {
 
 void print_intervals() {
     COList_t d;
-    for (d = defs; d; d = d->next)
+    for (d = raw_defs; d; d = d->next)
     {
         COpr_t opr = d->opr,
                repr = cinterv_repr(opr);
@@ -1888,17 +1943,218 @@ void print_intervals() {
     }
 }
 
-void register_alloc() {
-    mark_insts();
-    build_intervals();
-    init_def();
-    /* FIXME: all vars are spilled */
+#define MAX_AVAIL_REGS 10
+const int avail_regs[MAX_AVAIL_REGS] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
+
+void colist_remove(COList_t node) {
+    node->prev->next = node->next;
+    node->next->prev = node->prev;
+}
+
+void colist_add(COList_t head, COList_t p) {
+    (p->next = head->next)->prev = p;
+    (p->prev = head)->next = p;
+}
+
+int overlap_with_beg(COpr_t i, int beg) {
+    CRange_t r;
+    for (r = i->range; r->l <= beg; r = r->next)
+        if (r->r > beg) return 1;
+    return 0;
+}
+
+int overlap_with_interv(COpr_t i, COpr_t cur) {
+    CRange_t pi, pc;
+    for (pi = i->range, pc = cur->range; pi && pc;)
     {
-        COList_t p;
-        for (p = defs; p; p = p->next)
-            p->opr->reg = -1;
+        if (pi->r <= pc->l) pi = pi->next;
+        else if (pc->r <= pi->l) pc = pc->next;
+        else return 1;
     }
+    return 0;
+}
+
+int copr_comp(const void *a, const void *b) {
+    return (*(COpr_t *)a)->range->l - (*(COpr_t *)b)->range->l;
+}
+
+void register_alloc() {
+    static int freg[32], f[32];
+    int dn = 0, i;
+    COList_t p;
+    COpr_t *unhandled;
+    COList_t active = NEW(COList),
+             inactive = NEW(COList);
+    active->next = active->prev = active;
+    inactive->next = inactive->prev = inactive;
+    memset(freg, -1, sizeof freg);
+    for (i = 0; i < MAX_AVAIL_REGS; i++)
+        freg[avail_regs[i]] = 1; /* available */
+    for (p = raw_defs; p; p = p->next)
+    {
+        COpr_t opr = p->opr;
+        opr->reg = -2;
+        if (opr->par != opr) continue;
+        if (cinterv_repr(opr)->range)
+        {
+            opr->reg = -1;
+            dn++;
+        }
+    }
+    unhandled = (COpr_t *)malloc(dn * sizeof(COpr_t));
+    i = 0;
+    for (p = raw_defs; p; p = p->next)
+        if (p->opr->reg == -1)
+            unhandled[i++] = p->opr;
+    for (i = 0; i < dn; i++)
+    {
+        COpr_t opr = unhandled[i];
+        CRange_t r;
+        /*
+        if (opr->kind == VAR && opr->range->next)
+        {
+            free(opr->range);
+            opr->range = opr->range->next;
+        }*/   /* discard uncessary load */
+        for (r = opr->range; r->next; r = r->next);
+        opr->begin = opr->range->l;
+        opr->end = r->r;
+        copr_print(stderr, opr);
+        fprintf(stderr, " (key: %d begin: %d, end: %d, weight: %d)\n",
+                opr->range->l, opr->begin, opr->end, opr->info.var->weight);
+    }
+    qsort(unhandled, dn, sizeof(COpr_t), copr_comp);
     print_intervals();
+    /* preparation done */
+    for (i = 0; i < dn; i++)
+    {
+        COList_t c = NEW(COList);
+        COpr_t cur;
+        COList_t np;
+        int reg, t;
+        cur = c->opr = unhandled[i];
+        /* for each interval in active */
+        for (p = active->next; p != active; p = np)
+        {
+            COpr_t i = p->opr;
+            np = p->next;
+            if (i->end <= cur->begin) /* if i ends before cur.beg */
+            {
+                colist_remove(p);
+                free(p);            /* move i to handled */
+                freg[i->reg] = 1;   /* add i.reg to free */
+            }
+            else if (!overlap_with_beg(i, cur->begin))
+            {
+                colist_remove(p); 
+                colist_add(inactive, p); /* move i to inactive */
+                freg[i->reg] = 1;        /* add i.reg to free */
+            }
+        }
+        /* for each interval i in inactive */
+        for (p = inactive->next; p != inactive; p = np)
+        {
+            COpr_t i = p->opr;
+            np = p->next;
+            if (i->end <= cur->begin)   /* if i ends before cur.beg */
+            {
+                colist_remove(p);
+                free(p);                /* move i to handled */
+            }
+            else if (overlap_with_beg(i, cur->begin))
+            {
+                colist_remove(p);
+                colist_add(active, p);  /* move i to active */
+                freg[i->reg] = 0;       /* remove i.reg from free */
+            }
+        }
+        memmove(f, freg, sizeof f);
+        /* for each interval i in inactive that overlaps cur do
+         * f <- f - {i.reg} */
+        for (p = inactive->next; p != inactive; p = p->next)
+            if (overlap_with_interv(p->opr, cur))
+                f[p->opr->reg] = 0;
+        reg = -1;
+        for (t = 0; t < 32; t++)
+            if (f[t] > 0) { reg = t; break; }
+        if (reg == -1) /* if f = {} */
+        { /* assign mem loc */
+            static int w[32];
+            int min = 0x7fffffff;
+            memset(w, 0, sizeof w);
+            for (p = active->next; p != active; p = p->next)
+                if (overlap_with_interv(p->opr, cur))
+                    w[p->opr->reg] += p->opr->info.var->weight;
+            for (p = inactive->next; p != inactive; p = p->next)
+                if (overlap_with_interv(p->opr, cur))
+                    w[p->opr->reg] += p->opr->info.var->weight;
+            for (t = 0; t < 32; t++)
+                if (f[t] != -1 && w[t] < min) min = t, reg = t;
+            if (cur->info.var->weight < w[reg])
+            {
+                cur->reg = -1;      /* assign a memory location to cur */
+                free(c);            /* and move cur to handled */
+            }
+            else
+            {
+                /* move all active or inactive intervals to which r was assigned to handled
+                 * assign memory locations to them */
+                for (p = active->next; p != active; p = np)
+                {
+                    np = p->next;
+                    if (p->opr->reg == reg)
+                    {
+                        p->opr->reg = -1;
+                        colist_remove(p);
+                        free(p);
+                    }
+                }
+                for (p = inactive->next; p != inactive; p = np)
+                {
+                    np = p->next;
+                    if (p->opr->reg == reg)
+                    {
+                        p->opr->reg = -1;
+                        colist_remove(p);
+                        free(p);
+                    }
+                }
+                cur->reg = reg;
+                colist_add(active, c); /* move cur to active */
+            }
+        }
+        else
+        {
+            cur->reg = reg; /* cur.reg <- any register in f */
+            freg[reg] = 0;  /* free <- free - {cur.reg} */
+            colist_add(active, c); /* move cur to active */
+        }
+    }
+    for (i = 0; i < dn; i++)
+    {
+        COpr_t opr = unhandled[i];
+        copr_print(stderr, opr);
+        fprintf(stderr, " (begin: %d, end: %d, weight: %d, reg: %d)\n",
+                opr->begin, opr->end, opr->info.var->weight, opr->reg);
+    }
+    for (p = raw_defs; p; p = p->next)
+    {
+        COpr_t opr = p->opr;
+        if (cinterv_repr(opr)->range)
+        {
+            opr->spill = cinterv_repr(opr);
+            opr->reg = opr->spill->reg;
+        }
+    }
+    defs = NULL;
+    for (i = 0; i < dn; i++)
+    {
+        COList_t p = NEW(COList);
+        p->opr = unhandled[i];
+        p->next = defs;
+        defs = p;
+    }
+    free(unhandled);
 }
 
 void const_propagation() {
@@ -2066,5 +2322,8 @@ void ssa_func(CType_t func) {
     insert_phi(vars);
     renaming_vars(all_oprs);
     const_propagation();
+    mark_insts();
+    build_intervals();
+    init_def();
     register_alloc();
 }

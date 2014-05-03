@@ -7,6 +7,7 @@
 
 int reg_v0 = 2;
 int reg_v1 = 3;
+COpr_t status[32];
 
 void mips_prologue() {
     CVList_t v;
@@ -25,10 +26,10 @@ void mips_prologue() {
             switch (initr->ext.type->type)
             {
                 case CINT:
-                    printf("\t.word %d\n", initr->ext.const_val);
+                    printf("\t.word %ld\n", initr->ext.const_val);
                     break;
                 case CCHAR:
-                    printf("\t.byte %d\n", initr->ext.const_val);
+                    printf("\t.byte %ld\n", initr->ext.const_val);
                     break;
                 case CPTR:
                     {
@@ -62,7 +63,7 @@ void mips_prologue() {
 }
 
 void mips_load(int reg, COpr_t opr) {
-    CVar_t var = cinterv_repr(opr)->info.var;
+    CVar_t var = opr->spill->info.var;
     CType_t type = opr->type;
     if (type->type == CSTRUCT ||
         type->type == CUNION ||
@@ -84,7 +85,7 @@ void mips_load(int reg, COpr_t opr) {
 }
 
 void mips_store(int reg, COpr_t opr) {
-    CVar_t var = cinterv_repr(opr)->info.var;
+    CVar_t var = opr->spill->info.var;
     CType_t type = opr->type;
     const char *l = type->type == CCHAR ? "sb" : "sw";
     /* TODO: struct */
@@ -110,7 +111,7 @@ int mips_to_reg(COpr_t opr, int reg0) {
         printf("\tla $%d, _func_%s\n", reg0, opr->info.str);
         return reg0;
     }
-    if (opr->reg != -1) return cinterv_repr(opr)->reg;
+    if (opr->reg != -1) return opr->reg;
     mips_load(reg0, opr);
     return reg0;
 }
@@ -128,7 +129,8 @@ void mips_space_alloc() {
     for (d = defs; d; d = d->next)
     {
         COpr_t opr = d->opr;
-        if (opr->kind == TMP && opr->par == opr)
+        assert(opr->par == opr);
+        if (opr->kind == TMP)
         {
             int t = opr->type->type;
             tmp_size += align_shift(tmp_size);
@@ -192,7 +194,8 @@ void mips_space_alloc() {
     for (d = defs; d; d = d->next)
     {
         COpr_t opr = d->opr;
-        if (opr->kind == TMP && opr->par == opr)
+        assert(opr->par == opr);
+        if (opr->kind == TMP)
             opr->info.var->start += prev;
     }
     prev += tmp_size;
@@ -261,7 +264,7 @@ void mips_generate() {
             switch (i->op)
             {
                 case LOAD:
-                    if (i->dest->reg != -1)
+                    if (i->dest->kind == VAR && i->dest->reg > 0)
                         mips_load(i->dest->reg, i->dest);
                     break;
                 case MOVE:
@@ -269,7 +272,7 @@ void mips_generate() {
                         /* TODO: struct */
                         int rs = mips_to_reg(i->src1, reg_v0);
                         int rd = i->dest->reg;
-                        if (rd != -1)
+                        if (rd > 0)
                             printf("\tmove $%d $%d\n", rd, rs);
                         else
                             rd = rs;
@@ -378,15 +381,20 @@ void mips_generate() {
                     {
                         int rd = i->dest->reg;
                         if (i->src1->kind == IMMF)
-                            printf("\tjal _func_%s\n", i->src1->info.str);
+                            printf("\tjal %s%s\n", 
+                                    strcmp(i->src1->info.str, "main") ? "_func_" : "",
+                                    i->src1->info.str);
                         else
                             printf("\tjalr $%d\n", mips_to_reg(i->src1, reg_v0));
-                        if (rd != -1) 
-                            printf("\tmove $%d, $%d\n", rd, reg_v0);
-                        else
-                            rd = reg_v0;
-                        if (i->dest->reg == -1 || i->dest->kind == VAR)
-                            mips_store(reg_v0, i->dest);
+                        if (rd != -2)
+                        {
+                            if (rd != -1) 
+                                printf("\tmove $%d, $%d\n", rd, reg_v0);
+                            else
+                                rd = reg_v0;
+                            if (i->dest->reg == -1 || i->dest->kind == VAR)
+                                mips_store(reg_v0, i->dest);
+                        }
                     }
                     break;
                 case RET:
@@ -411,7 +419,7 @@ void mips_generate() {
                             printf("\tla $%d, %s\n", rd, i->src1->info.str);
                         else
                         {
-                            CVar_t var = i->src1->info.var;
+                            CVar_t var = i->src1->spill->info.var;
                             if (var->global)
                                 printf("\tla $%d, _%s\n", rd, var->name);
                             else

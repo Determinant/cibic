@@ -271,6 +271,7 @@ CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     cv->initr = NULL;
     cv->defsite = NULL;
     cv->global = 0;
+    cv->weight = 0;
     return cv;
 }
 
@@ -803,7 +804,7 @@ ExpType exp_check_arith(ExpType op1, ExpType op2, CNode *p, char kind) {
     res.type = basic_type_int;
     if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
     {
-        int l = lch->ext.const_val,
+        long l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
         switch (kind)
@@ -830,7 +831,7 @@ ExpType exp_check_bitwise(ExpType op1, ExpType op2, CNode *p, char kind) {
     res.type = basic_type_int;
     if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
     {
-        int l = lch->ext.const_val,
+        long l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
         switch (kind)
@@ -888,7 +889,7 @@ ExpType exp_check_add(ExpType op1, ExpType op2, CNode *p, char kind) {
     }
     if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
     {
-        int r = rch->ext.const_val,
+        long r = rch->ext.const_val,
             *a = &(p->ext.const_val);
         if (t1 == CARR)
         {
@@ -1001,7 +1002,7 @@ ExpType exp_check_logical(ExpType op1, ExpType op2, CNode *p, char kind) {
 
     if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
     {
-        int l = lch->ext.const_val,
+        long l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
         switch (kind)
@@ -1052,7 +1053,7 @@ ExpType exp_check_equality(ExpType op1, ExpType op2, CNode *p, int kind) {
     res.type = basic_type_int;
     if ((p->ext.is_const = lch->ext.is_const && rch->ext.is_const))
     {
-        int l = lch->ext.const_val,
+        long l = lch->ext.const_val,
             r = rch->ext.const_val,
             *a = &(p->ext.const_val);
         switch (kind)

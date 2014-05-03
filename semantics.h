@@ -50,6 +50,7 @@ struct CVar {
     int global;
     /* the following fields are used for renaming */
     int cnt;
+    int weight;
     COList_t stack;
 };
 

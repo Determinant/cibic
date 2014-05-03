@@ -49,7 +49,7 @@ typedef struct CNode {
         CType_t type;
         CVar_t var;
         CVList_t autos;
-        int const_val;
+        long const_val;
         int is_const;
         int offset; /* offset from var */
     } ext;

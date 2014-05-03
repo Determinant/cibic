@@ -34,19 +34,23 @@ struct COpr {
     int dep;
     int mod;
     int reg;        /* -1 for spilled, -2 for discarded */
+    int begin, end; /* for reg allocation */
     CType_t type;
     CInst_t def;
     CRange_t range;
     COpr_t par;     /* union-find */
     COpr_t cval;
+    COpr_t spill;   /* check this reference if spilled */
 };
 
 typedef struct COList COList;
 typedef COList *COList_t;
 struct COList {
     COpr_t opr;
-    COList_t next;
+    COList_t next, prev;
 };
+
+void colist_remove(COList_t node);
 
 struct CInst {
     enum {
