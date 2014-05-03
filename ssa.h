@@ -33,7 +33,7 @@ struct COpr {
     int sub;
     int dep;
     int mod;
-    int reg;        /* -1 for spilled */
+    int reg;        /* -1 for spilled, -2 for discarded */
     CType_t type;
     CInst_t def;
     CRange_t range;

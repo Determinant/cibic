@@ -1551,22 +1551,26 @@ void renaming_dfs(CBlock_t blk) {
     for (i = ih->next; i != ih; i = i->next)
     {
         COpr_t dest = i->dest;
-        COpr_t *opr[2] = {&(i->src1), &(i->src2)};
+        COpr_t *opr[3] = {NULL, &(i->src1), &(i->src2)};
         int t;
-        for (t = 0; t < 2; t++)
+        if (i->op == WARR)
+            opr[0] = &(i->dest);
+        for (t = 0; t < 3; t++)
         {
-            COpr_t p = *(opr[t]);
-            if (!p || p->kind != VAR) continue;
+            COpr_t p;
+            if (!opr[t]) continue;
+            p = *(opr[t]);
+            if (!(p && (p->kind == VAR || p->kind == TMP))) continue;
             /* free(p); */  /* memory leak */
             (*(opr[t]) = p->info.var->stack->opr)->type = p->type;
         }
         if (dest)
         {
-            if (dest->kind == VAR)
+            if (i->op == WARR)
+                i->dest = dest->info.var->stack->opr;
+            else
             {
-                if (i->op == WARR)
-                    i->dest = dest->info.var->stack->opr;
-                else
+                if (dest->kind == VAR || dest->kind == TMP)
                 {
                     CVar_t var = dest->info.var;
                     COList_t n = NEW(COList), n2;
@@ -1581,11 +1585,6 @@ void renaming_dfs(CBlock_t blk) {
                     n2->next = defs;
                     defs = n2;
                 }
-            }
-            else if (dest->kind == TMP)
-            {
-                dest->def = i;
-                dest->range = NULL;
             }
         }
     }
@@ -1616,31 +1615,17 @@ void renaming_dfs(CBlock_t blk) {
     }
 }
 
-void renaming_vars(CVList_t vars) {
-    CVList_t vp;
-    for (vp = vars; vp; vp = vp->next)
-    {
-        CInst_t ld = cinst_create();
-        vp->var->cnt = 0;
-        ld->op = LOAD;
-        ld->dest = copr_create();
-        ld->dest->kind = VAR;
-        ld->dest->info.var = vp->var;
-        ld->dest->type = vp->var->type;
-        cblock_pushfront(entry, ld);
-/*      CVar_t var = vp->var;
-        COpr_t idef = copr_create();
-        COList_t n = NEW(COList);
-        var->cnt = 0;
-        var->stack = n;
-        n->opr = idef;
-        n->next = NULL;
-        idef->def = NULL;
-        idef->sub = 0;
-        idef->kind = VAR;
-        idef->info.var = var;
-        */
-    }
+void renaming_vars(COList_t oprs) {
+    COList_t p;
+    for (p = oprs; p; p = p->next)
+        if (p->opr->kind == VAR)
+        {
+            CInst_t ld = cinst_create();
+            p->opr->info.var->cnt = 0;
+            ld->op = LOAD;
+            ld->dest = p->opr;
+            cblock_pushfront(entry, ld);
+        }
     renaming_dfs(entry);
 }
 
@@ -1751,7 +1736,7 @@ void build_intervals() {
             for (i = ih->prev; i != ih; i = i->prev)
             {
                 int t;
-                COpr_t oprs[2] = {i->src1, i->src2};
+                COpr_t oprs[3] = {NULL, i->src1, i->src2};
                 if (i->dest &&
                     (i->dest->kind == VAR ||
                      i->dest->kind == TMP) && i->op != WARR) /* def */
@@ -1760,8 +1745,12 @@ void build_intervals() {
                     cpset_erase(curlive, (long)i->dest);
                 }
                 else
+                {
+                    if (i->op == WARR)
+                        oprs[0] = i->dest;
                     i->is_def = 0;
-                for (t = 0; t < 2; t++)
+                }
+                for (t = 0; t < 3; t++)
                 {
                     COpr_t opr = oprs[t];
                     if (opr && 
@@ -2007,7 +1996,8 @@ void ssa_func(CType_t func) {
     CBlock_t p;
     entry = cblock_create(1);
     CPSet_t vs = cpset_create(), avs = cpset_create();
-    CVList_t vars = NULL, all_vars = NULL;
+    CVList_t vars = NULL;
+    COList_t all_oprs = NULL;
     int i;
     cfg_clear();
     dtree_clear();
@@ -2021,24 +2011,21 @@ void ssa_func(CType_t func) {
             p->pred++;
         for (i = head->next; i != head; i = i->next)
         {
-            if (i->src1 && i->src1->kind == VAR)
-                cpset_insert(avs, (long)(i->src1->info.var));
-            if (i->src2 && i->src2->kind == VAR)
-                cpset_insert(avs, (long)(i->src2->info.var));
-            if (i->dest && i->dest->kind == VAR)
+            if (i->src1 && (i->src1->kind == VAR || i->src1->kind == TMP))
+                cpset_insert(avs, (long)(i->src1));
+            if (i->src2 && (i->src2->kind == VAR || i->src2->kind == TMP))
+                cpset_insert(avs, (long)(i->src2));
+            if (i->op == WARR)
+                cpset_insert(avs, (long)(i->dest));
+            else if (i->dest && i->dest->kind == VAR)
             {
-                if (i->op == WARR)
-                    cpset_insert(avs, (long)(i->dest->info.var));
-                else
-                {
-                    CVar_t d = i->dest->info.var;
-                    CBList_t b = NEW(CBList);
-                    cpset_insert(vs, (long)d);
-                    cpset_insert(avs, (long)d);
-                    b->next = d->defsite;
-                    b->cblk = p;
-                    d->defsite = b;
-                }
+                CVar_t d = i->dest->info.var;
+                CBList_t b = NEW(CBList);
+                cpset_insert(vs, (long)d);
+                cpset_insert(avs, (long)(i->dest));
+                b->next = d->defsite;
+                b->cblk = p;
+                d->defsite = b;
             }
         }
         blks[p->id] = p;
@@ -2057,15 +2044,15 @@ void ssa_func(CType_t func) {
             }
             for (p = avs->head[i]; p; p = p->next)
             {
-                CVList_t n = NEW(CVList);
-                n->next = all_vars;
-                n->var = (CVar_t)p->key;
-                all_vars = n;
+                COList_t n = NEW(COList);
+                n->next = all_oprs;
+                n->opr = (COpr_t)p->key;
+                all_oprs = n;
             }
         }
     }
     insert_phi(vars);
-    renaming_vars(all_vars);
+    renaming_vars(all_oprs);
     const_propagation();
     register_alloc();
     cpset_destroy(vs);
