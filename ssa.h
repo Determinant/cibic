@@ -130,7 +130,7 @@ typedef struct CPSet {
 } CPSet;
 typedef CPSet *CPSet_t;
 
-CPSet_t cpset_create();
+CPSet_t cpset_create(void);
 int cpset_insert(CPSet_t cps, long key);
 int cpset_belongs(CPSet_t cps, long key);
 void cpset_destroy(CPSet_t cps);
@@ -145,10 +145,12 @@ void ssa_generate(void);
 COpr_t cinterv_repr(COpr_t opr);
 void cinst_print(FILE *stream, CInst_t inst);
 int overlap_with_beg(COpr_t i, int beg);
+
 extern int gbbase;
 extern CBlock_t entry;
 extern COList_t defs;
 extern CType_t func;
 extern const int avail_regs[];
 extern const int MAX_AVAIL_REGS;
+
 #endif

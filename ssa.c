@@ -1942,10 +1942,13 @@ const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
 const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
 
 void register_alloc() {
+    /* Algorithm from the paper:
+     * Linear Scan Register Allocation
+     * in the Context of SSA Form and Register Constraints */
     static int freg[32], f[32];
     int dn = 0, i;
-    COList_t p;
     COpr_t *unhandled;
+    COList_t p;
     COList_t active = NEW(COList),
              inactive = NEW(COList);
     active->next = active->prev = active;
