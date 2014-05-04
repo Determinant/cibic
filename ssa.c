@@ -10,15 +10,15 @@
 
 static CGraph cfg, dtree;
 static CBlock_t blks[MAX_BLOCK];
-static COList_t raw_defs;
-static int bcnt;        /* block counter */
-static int tcnt;        /* temporary counter */
+static COList_t raw_defs;   /* defintion of all vars and tmps */
+static int bcnt;            /* block counter */
+static int tcnt;            /* temporary counter */
 
 /* for code generation */
 int gbbase;
 CBlock_t entry;
 CType_t func;
-COList_t defs;
+COList_t defs;              /* all defintions that have actual effects */
 
 COpr_t copr_create() {
     COpr_t opr = NEW(COpr);
@@ -1951,6 +1951,7 @@ void register_alloc() {
     active->next = active->prev = active;
     inactive->next = inactive->prev = inactive;
     memset(freg, -1, sizeof freg);
+    init_def();
     for (i = 0; i < MAX_AVAIL_REGS; i++)
         freg[avail_regs[i]] = 1; /* available */
     for (p = raw_defs; p; p = p->next)
@@ -2226,24 +2227,35 @@ void const_propagation() {
 }
 
 void ssa_func(CType_t func) {
-#define AVS_ADD(_opr) \
+#define OPRS_ADD(_opr) \
     do { \
         if (cpset_insert(avs, (long)((_opr)->info.var))) \
         { \
             COList_t n = NEW(COList); \
-            n->next = all_oprs; \
+            n->next = oprs; \
             n->opr = _opr; \
-            all_oprs = n; \
+            oprs = n; \
         } \
     } while (0)
+
+#define VS_ADD(_d) \
+    do { \
+        if (cpset_insert(vs, (long)(_d))) \
+        { \
+            CVList_t n = NEW(CVList); \
+            n->next = vars; \
+            n->var = _d; \
+            vars = n; \
+        } \
+    } while (0)
+
 
     CBlock_t p;
     entry = cblock_create(1);
     CPSet_t vs = cpset_create(), avs = cpset_create();
     CVList_t vars = NULL;
-    COList_t all_oprs = NULL;
+    COList_t oprs = NULL;
     /* CVar_t pr; */
-    int i;
     cfg_clear();
     dtree_clear();
     ssa_comp(func->rec.func.body, entry, NULL);
@@ -2263,17 +2275,17 @@ void ssa_func(CType_t func) {
         for (i = head->next; i != head; i = i->next)
         {
             if (i->src1 && (i->src1->kind == VAR || i->src1->kind == TMP))
-                AVS_ADD(i->src1);
+                OPRS_ADD(i->src1);
             if (i->src2 && (i->src2->kind == VAR || i->src2->kind == TMP))
-                AVS_ADD(i->src2);
+                OPRS_ADD(i->src2);
             if (i->op == WARR)
-                AVS_ADD(i->dest);
+                OPRS_ADD(i->dest);
             else if (i->dest && i->dest->kind == VAR)
             {
                 CVar_t d = i->dest->info.var;
                 CBList_t b = NEW(CBList);
-                cpset_insert(vs, (long)d);
-                AVS_ADD(i->dest);
+                VS_ADD(d);
+                OPRS_ADD(i->dest);
                 b->next = d->defsite;
                 b->cblk = p;
                 d->defsite = b;
@@ -2282,27 +2294,15 @@ void ssa_func(CType_t func) {
         blks[p->id] = p;
     }
     cpset_destroy(avs);
-    calc_dominant_frontier();
-    {
-        CPNode *p;
-        for (i = 0; i < MAX_TABLE_SIZE; i++)
-        {
-            for (p = vs->head[i]; p; p = p->next)
-            {
-                CVList_t n = NEW(CVList);
-                n->next = vars;
-                n->var = (CVar_t)p->key;
-                vars = n;
-            }
-        }
-    }
     cpset_destroy(vs);
-
+    calc_dominant_frontier();
+    /* build SSA */
     insert_phi(vars);
-    renaming_vars(all_oprs);
+    renaming_vars(oprs);
+    /* optimization on SSA */
     const_propagation();
+    /* out of SSA */
     mark_insts();
     build_intervals();
-    init_def();
     register_alloc();
 }
