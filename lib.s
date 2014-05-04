@@ -14,7 +14,6 @@ _func_printf:
 	addiu $12, $sp, 64
 # arg_1 = t0 + 4
 	addiu $12, $12, 4
-	sw $12, 16($sp)	#arg
 # goto __L2
 	j __L2
 __L1:
@@ -25,10 +24,8 @@ __L1:
 	beqz $13, __L20
 # fmt_4 = fmt_1 + 1
 	addiu $8, $8, 1
-	sw $8, 64($sp)	#fmt
 # ch_4 = fmt_4[0]
 	lb $9, 0($8)
-	sb $9, 12($sp)	#ch
 # t5 = ch_4 == 100
 	li $3, 100
 	seq $13, $9, $3
@@ -73,7 +70,6 @@ __L8:
 __L10:
 # x_4 = arg_2[0]
 	lw $10, 0($12)
-	sw $10, 4($sp)	#x
 # t15 = x_4 == 0
 	li $3, 0
 	seq $11, $10, $3
@@ -82,24 +78,20 @@ __L10:
 # len_11 = 1
 	li $2, 1
 	move $11 $2
-	sw $11, 8($sp)	#len
 # goto __L15
 	j __L15
 __L12:
 # len_8 = 0
 	li $2, 0
 	move $11 $2
-	sw $11, 8($sp)	#len
 # goto __L14
 	j __L14
 __L13:
 # x_7 = x_6 / 10
 	li $3, 10
 	divu $10, $10, $3
-	sw $10, 4($sp)	#x
 # len_10 = len_9 + 1
 	addiu $11, $11, 1
-	sw $11, 8($sp)	#len
 __L14:
 # if (x_6) goto __L13
 	bnez $10, __L13
@@ -107,7 +99,6 @@ __L15:
 # len_5 = 4 - len_4
 	li $2, 4
 	subu $11, $2, $11
-	sw $11, 8($sp)	#len
 # goto __L17
 	j __L17
 __L16:
@@ -119,7 +110,6 @@ __L16:
 # len_7 = len_6 - 1
 	li $3, 1
 	subu $11, $11, $3
-	sw $11, 8($sp)	#len
 __L17:
 # if (len_6) goto __L16
 	bnez $11, __L16
@@ -131,11 +121,9 @@ __L17:
 	jal _func___print_int
 # fmt_6 = fmt_4 + 2
 	addiu $8, $8, 2
-	sw $8, 64($sp)	#fmt
 __L19:
 # arg_4 = arg_2 + 4
 	addiu $12, $12, 4
-	sw $12, 16($sp)	#arg
 # goto __L21
 	j __L21
 __L20:
@@ -146,11 +134,9 @@ __L20:
 __L21:
 # fmt_3 = fmt_2 + 1
 	addiu $8, $8, 1
-	sw $8, 64($sp)	#fmt
 __L2:
 # ch_2 = fmt_1[0]
 	lb $9, 0($8)
-	sb $9, 12($sp)	#ch
 # if (ch_2) goto __L1
 	bnez $9, __L1
 _ret_printf:

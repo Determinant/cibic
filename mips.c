@@ -92,7 +92,7 @@ void mips_store(int reg, COpr_t opr) {
     /* TODO: struct */
     if (var->global)
         printf("\t%s $%d, _%s\n", l, reg, var->name);
-    else
+    else if (opr->reg == -1)
         printf("\t%s $%d, %d($sp)\t#%s\n", l, reg, var->start, var->name);
 }
 
@@ -446,7 +446,7 @@ void mips_generate() {
                             if (i->src1->reg != -1)
                             {
                                 if (i->src1->kind == IMM)
-                                    printf("\tli$%d, %d\n", reg_v0, i->src1->info.imm);
+                                    printf("\tli $%d, %d\n", reg_v0, i->src1->info.imm);
                                 else
                                 {
                                     used_reg[i->src1->reg] = 1;

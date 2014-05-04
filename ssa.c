@@ -1895,6 +1895,7 @@ void cinterv_union(COpr_t a, COpr_t b) {
     if (a == b) return;
     b->range = crange_merge(b->range, a->range);
     a->par = b;
+    b->mod |= a->mod;
 }
 
 void init_def() {
@@ -2131,6 +2132,11 @@ void register_alloc() {
                 cur->reg = reg;
                 colist_add(active, c); /* move cur to active */
             }
+        }
+        else if (cur->mod)      /* may be referenced by a pointer */
+        {
+            cur->reg = -1;      /* assign a memory location to cur */
+            free(c);            /* and move cur to handled */
         }
         else
         {
