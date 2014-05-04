@@ -1,7 +1,7 @@
-int printf(char *fmt) {
+int printf(char *fmt, int pos) {
     char *arg, ch;
     int len, x;
-    arg = (int)&fmt + sizeof(char*);
+    arg = (int)&pos;
     while ((ch = *fmt))
     {
         if (ch == '%')
