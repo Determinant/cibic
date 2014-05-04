@@ -305,12 +305,13 @@ void mips_generate() {
                 case MOVE:
                     {
                         /* TODO: struct */
-                        int rs = mips_to_reg(i->src1, reg_v0);
+                        int rs;
                         int rd = i->dest->reg;
                         CType_t type = i->dest->type;
-                        if (type->type == CSTRUCT || type->type == CUNION)
+                        if ((type->type == CSTRUCT || type->type == CUNION) && i->dest->kind == VAR)
                         {
-                            assert(i->dest->kind == VAR);
+                            rs = mips_to_reg(i->src1, reg_v0);
+                            /* assert(i->dest->kind == VAR); */
                             printf("\tsw $%d, 4($sp)\n", rs);
                             if (rd < 0) rd = reg_v0;
                             mips_load(rd, i->dest);
@@ -323,13 +324,23 @@ void mips_generate() {
                         }
                         else
                         {
-                            if (rd > 0)
+                            if (i->dest->reg > 0 && i->src1->kind == IMM)
                             {
-                                if (rd != rs) printf("\tmove $%d $%d\n", rd, rs);
+                                printf("\tli $%d %d\n", i->dest->reg, i->src1->info.imm);
                             }
                             else
-                                rd = rs;
-                            if (i->dest->reg == -1 || i->dest->kind == VAR)
+                            {
+                                rs = mips_to_reg(i->src1, reg_v0);
+                                if (rd > 0)
+                                {
+                                    if (rd != rs) printf("\tmove $%d $%d\n", rd, rs);
+                                }
+                                else
+                                    rd = rs;
+                            }
+                            if (i->dest->reg == -1 ||
+                                (i->dest->kind == VAR &&
+                                 i->dest->info.var->loc > 0))
                                 mips_store(rd, i->dest);
                         }
                     }

@@ -2229,6 +2229,36 @@ void const_propagation() {
     }
 }
 
+void strength_reduction() {
+    int i;
+    for (i = bcnt - 1; i >= 0; i--)
+    {
+        CBlock_t b = blks[vis[i]];
+        CInst_t i, ni, ih = b->insts;
+        for (i = ih->next; i != ih; i = ni)
+        {
+            ni = i->next;
+            switch (i->op)
+            {
+                case ADD:
+                    if (i->src1->kind == IMM)
+                    {
+                        COpr_t t = i->src1;
+                        i->src1 = i->src2;
+                        i->src2 = t;
+                    }
+                    if (i->src2->kind == IMM && !i->src2->info.imm)
+                    {
+                        i->op = MOVE;
+                        i->src2 = NULL;
+                    }
+                    break;
+                default: ;
+            }
+        }
+    }
+}
+
 void ssa_func(CType_t func) {
 #define OPRS_ADD(_opr) \
     do { \
@@ -2304,6 +2334,7 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
+    strength_reduction();
     /* out of SSA */
     mark_insts();
     build_intervals();
