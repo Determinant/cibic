@@ -7,6 +7,7 @@
 
 int reg_v0 = 2;
 int reg_v1 = 3;
+int memcpy_cnt;
 static int save_pos[32];
 static int used_reg[32]; 
 
@@ -74,7 +75,7 @@ void mips_load(int reg, COpr_t opr) {
         if (var->loc > 0)
             printf("\tla $%d, _%s\n", reg, var->name);
         else
-            printf("\taddi $%d, $sp, %d\n", reg, var->start);
+            printf("\taddiu $%d, $sp, %d\n", reg, var->start);
     }
     else
     {
@@ -119,9 +120,24 @@ int mips_to_reg(COpr_t opr, int reg0) {
     return reg0;
 }
 
+void mips_memcpy() {
+    printf("\tj _mem_cond%d\n", memcpy_cnt);
+    printf("_mem_loop%d:\n", memcpy_cnt);
+    printf("\tlw $5, 0($%d)\n", reg_v0);
+    printf("\tsw $5, 0($%d)\n", reg_v1);
+    printf("\taddiu $%d, $%d, 4\n", reg_v1, reg_v1);
+    printf("\taddiu $%d, $%d, 4\n", reg_v0, reg_v0);
+    printf("\taddiu $a0, $a0, -4\n");
+    printf("_mem_cond%d:\n", memcpy_cnt);
+    printf("\tbnez $a0, _mem_loop%d\n", memcpy_cnt);
+    memcpy_cnt++;
+}
+
+/* memcpy requires three arguments */
+#define RESERVED_CALL_SIZE 12
 void mips_space_alloc() {
     int local_size = func->rec.func.local_size;
-    int arg_size = 0;
+    int arg_size = RESERVED_CALL_SIZE;
     int bret_size = 0;
     int tmp_size = 0;
     int offset = 0;
@@ -184,6 +200,7 @@ void mips_space_alloc() {
                     i->bret = bret_size;
                     bret_size += calc_size(rt);
                 }
+                else i->bret = -1;
             }
         }
     }
@@ -198,6 +215,8 @@ void mips_space_alloc() {
         int i;
         for (i = 0; i < MAX_AVAIL_REGS; i++)
             save_pos[avail_regs[i]] = prev + i * INT_SIZE;
+        save_pos[30] = save_size;
+        save_size += INT_SIZE;
     }
     prev += save_size;
     /* adjust offset for spilled temporaries */
@@ -214,7 +233,7 @@ void mips_space_alloc() {
     {
         CInst_t i, ih = p->insts;
         for (i = ih->next; i != ih; i = i->next)
-            if (i->op == CALL)
+            if (i->op == CALL && i->bret != -1)
                 i->bret += prev;
     }
     prev += bret_size;
@@ -255,6 +274,7 @@ void mips_func_end() {
 
 void mips_generate() {
     CBlock_t p;
+    CType_t rt = func->rec.func.ret;
     /* int arg_cnt = 0; */
     mips_space_alloc();
     if (strcmp(func->name, "main"))
@@ -287,12 +307,31 @@ void mips_generate() {
                         /* TODO: struct */
                         int rs = mips_to_reg(i->src1, reg_v0);
                         int rd = i->dest->reg;
-                        if (rd > 0)
-                            printf("\tmove $%d $%d\n", rd, rs);
+                        CType_t type = i->dest->type;
+                        if (type->type == CSTRUCT || type->type == CUNION)
+                        {
+                            assert(i->dest->kind == VAR);
+                            printf("\tsw $%d, 4($sp)\n", rs);
+                            if (rd < 0) rd = reg_v0;
+                            mips_load(rd, i->dest);
+                            printf("\tsw $%d, 0($sp)\n", rd);
+                            printf("\tli $%d, %d\n", reg_v0, calc_size(type));
+                            printf("\tsw $%d, 8($sp)\n", reg_v0);
+                            /* don't need to save current registers because
+                             * memcpy doesn't interfere with them */
+                            printf("\tjal _func_memcpy\n");
+                        }
                         else
-                            rd = rs;
-                        if (i->dest->reg == -1 || i->dest->kind == VAR)
-                            mips_store(rd, i->dest);
+                        {
+                            if (rd > 0)
+                            {
+                                if (rd != rs) printf("\tmove $%d $%d\n", rd, rs);
+                            }
+                            else
+                                rd = rs;
+                            if (i->dest->reg == -1 || i->dest->kind == VAR)
+                                mips_store(rd, i->dest);
+                        }
                     }
                     break;
                 case BEQZ:
@@ -325,7 +364,7 @@ void mips_generate() {
                         {
                             int index = i->src2->info.imm;
                             rd = i->dest->reg;
-                            if (rd == -1) rd = reg_v1;
+                            if (rd < 0) rd = reg_v1;
                             printf("\t%s $%d, %d($%d)\n", l, rd, index, arr);
                         }
                         else
@@ -342,26 +381,54 @@ void mips_generate() {
                     break;
                 case WARR:
                     {
-                        CType_t type = i->dest->type;
-                        int arr = mips_to_reg(i->dest, reg_v0);
+                        CType_t type = i->wtype;
+                        int arr = mips_to_reg(i->dest, reg_v1);
                         const char *s;
                         int rs;
+                        /*
                         if (type->type == CARR)
                             type = type->rec.arr.elem;
                         else
                             type = type->rec.ref;
+                            */
                         s = type->type == CCHAR ? "sb" : "sw";
-                        if (i->src2->kind == IMM)
+
+                        if (type->type == CSTRUCT || type->type == CUNION)
                         {
-                            rs = mips_to_reg(i->src1, reg_v1);
-                            printf("\t%s $%d, %d($%d)\n", s, rs, i->src2->info.imm, arr);
+                            if (i->src2->kind == IMM)
+                                printf("\taddiu $%d, $%d, %d\n", reg_v1, arr, i->src2->info.imm);
+                            else
+                            {
+                                int index = mips_to_reg(i->src2, reg_v0);
+                                printf("\taddu $%d, $%d, $%d\n", reg_v1, arr, index);
+                            }
+                            rs = mips_to_reg(i->src1, reg_v0);
+                            printf("\tmove $%d, $%d\n", reg_v0, rs);
+                            printf("\tli $a0, %d\n", calc_size(type));
+                            mips_memcpy();
                         }
                         else
                         {
-                            int index = mips_to_reg(i->src2, reg_v1);
-                            printf("\taddu $%d, $%d, $%d\n", reg_v1, arr, index);
-                            rs = mips_to_reg(i->src1, reg_v0);
-                            printf("\t%s $%d, 0($%d)\n", s, rs, reg_v1);
+                            if (i->src2->kind == IMM)
+                            {
+                                rs = mips_to_reg(i->src1, reg_v0);
+                                if (type->type == CSTRUCT || type->type == CUNION)
+                                {
+                                    printf("\tmove $%d, $%d\n", reg_v0, rs);
+                                    printf("\taddiu $%d, $%d, $%d\n", reg_v1, arr, i->src2->info.imm);
+                                    printf("\tli $a0, %d\n", calc_size(type));
+                                    mips_memcpy();
+                                }
+                                else
+                                    printf("\t%s $%d, %d($%d)\n", s, rs, i->src2->info.imm, arr);
+                            }
+                            else
+                            {
+                                int index = mips_to_reg(i->src2, reg_v0);
+                                printf("\taddu $%d, $%d, $%d\n", reg_v0, arr, index);
+                                rs = mips_to_reg(i->src1, reg_v1);
+                                printf("\t%s $%d, 0($%d)\n", s, rs, reg_v0);
+                            }
                         }
                     }
                     break;
@@ -376,8 +443,24 @@ void mips_generate() {
                         else
                         {
                         */
-                        /* TODO: push struct */
-                        printf("\tsw $%d, %d($sp) # push\n", rs, i->offset);
+                        CType_t type = i->src1->type;
+                        if (type && (type->type == CSTRUCT || type->type == CUNION))
+                        {
+                            /*
+                            printf("\tsw $%d, 4($sp)\n", rs);
+                            printf("\taddiu $%d, $sp, %d\n", reg_v0, i->offset);
+                            printf("\tsw $%d, 0($sp)\n", reg_v0);
+                            printf("\tli $%d, %d\n", reg_v0, calc_size(type));
+                            printf("\tsw $%d, 8($sp)\n", reg_v0);
+                            printf("\tjal _func_memcpy\n");
+                            */
+                            printf("\taddiu $%d, $sp, %d\n", reg_v1, i->offset);
+                            printf("\tmove $%d, $%d\n", reg_v0, rs);
+                            printf("\tli $a0, %d\n", calc_size(type));
+                            mips_memcpy();
+                        }
+                        else
+                            printf("\tsw $%d, %d($sp) # push\n", rs, i->offset);
                         /* } 
                         arg_cnt++; */
                     }
@@ -388,6 +471,8 @@ void mips_generate() {
                         int rd = i->dest->reg;
                         int j;
                         memset(used_reg, 0, sizeof used_reg);
+                        if (rt->type == CSTRUCT || rt->type == CUNION)
+                            used_reg[30] = 1; /* save $fp */
                         for (p = defs; p; p = p->next)
                         {
                             COpr_t opr = p->opr;
@@ -399,6 +484,13 @@ void mips_generate() {
                         for (j = 0; j < 32; j++)
                             if (used_reg[j])
                                 printf("\tsw $%d, %d($sp) # save reg\n", j, save_pos[j]);
+                        if (i->bret != -1)
+                        {
+                            if (i->dest->kind == TMP)
+                                printf("\taddiu $fp, $sp, %d\n", i->bret);
+                            else
+                                mips_load(30, i->dest);
+                        }
                         if (i->src1->kind == IMMF)
                             printf("\tjal %s%s\n", 
                                     strcmp(i->src1->info.str, "main") ? "_func_" : "",
@@ -419,12 +511,25 @@ void mips_generate() {
                         }
                         if (rd != -2)
                         {
-                            if (rd != -1) 
-                                printf("\tmove $%d, $%d\n", rd, reg_v0);
+                            if (i->bret != -1 && i->dest->kind == VAR)
+                            {
+                                if (rd == -1) 
+                                    rd = mips_to_reg(i->dest, reg_v1);
+                                printf("\tmove $%d, $%d\n", reg_v1, rd);
+                                printf("\tli $a0, %d\n", calc_size(i->dest->type));
+                                mips_memcpy();
+                            }
                             else
-                                rd = reg_v0;
-                            if (i->dest->reg == -1 || i->dest->kind == VAR)
-                                mips_store(reg_v0, i->dest);
+                            {
+                                if (rd != -1) 
+                                    printf("\tmove $%d, $%d\n", rd, reg_v0);
+                                /*
+                                else
+                                    rd = reg_v0;
+                                    */
+                                if (i->dest->reg == -1 || i->dest->kind == VAR)
+                                    mips_store(reg_v0, i->dest);
+                            }
                         }
                     }
                     break;
@@ -432,15 +537,31 @@ void mips_generate() {
                     {
                         if (i->src1)
                         {
-                            if (i->src1->reg != -1)
+                            if (rt->type == CSTRUCT || rt->type == CUNION)
                             {
-                                if (i->src1->kind == IMM)
-                                    printf("\tli $%d, %d\n", reg_v0, i->src1->info.imm);
-                                else
-                                    printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
+                                int rs = mips_to_reg(i->src1, reg_v0);
+                                assert(i->src1->kind == VAR || i->src1->kind == TMP);
+                                printf("\tsw $%d, 4($sp)\n", rs);
+                                printf("\tsw $fp, 0($sp)\n");
+                                printf("\tli $%d, %d\n", reg_v0, calc_size(rt));
+                                printf("\tsw $%d, 8($sp)\n", reg_v0);
+                                printf("\tjal _func_memcpy\n");
+                                printf("\tmove $%d, $fp\n", reg_v0);
                             }
                             else
-                                mips_to_reg(i->src1, reg_v0);
+                            {
+                                if (i->src1->reg != -1)
+                                {
+                                    if (i->src1->kind == IMM)
+                                        printf("\tli $%d, %d\n", reg_v0, i->src1->info.imm);
+                                    else
+                                        printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
+                                }
+                                else
+                                {
+                                    mips_to_reg(i->src1, reg_v0);
+                                }
+                            }
                         }
                         printf("\tj _ret_%s\n", func->name);
                     }

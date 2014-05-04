@@ -337,14 +337,17 @@ void ssa_generate() {
 
 #define POINTER_CONV(inst) \
 do { \
-    if (rt->type == CARR || rt->type == CSTRUCT || rt->type == CUNION) \
+    if (rt->type == CARR) \
     { \
         /* convert to pointer type */ \
-        CType_t a = ctype_create("", CPTR, p); \
+        CType_t a; \
+        a = ctype_create("", CPTR, p); \
         a->rec.ref = rt->rec.arr.elem; \
         (inst)->op = ADD; \
-        (inst)->dest->type = a; \
+        (inst)->dest->type = a;  \
     } \
+    else if (rt->type == CSTRUCT || rt->type == CUNION) \
+        (inst)->op = ADD; \
     else (inst)->op = ARR; \
 } while (0)
 
@@ -477,6 +480,7 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
         lval->op = WARR;
         lval->dest = base->src1;
         lval->src2 = base->src2;
+        lval->wtype = p->ext.type;
         free(base);
         return lval->dest;
     }
@@ -585,6 +589,7 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                         lval->src2 = copr_create();
                         lval->src2->kind = IMM;
                         lval->src2->info.imm = 0;
+                        lval->wtype = p->ext.type;
                         return lval->dest;
                     }
                     else

@@ -154,16 +154,16 @@ _func_malloc:
     syscall
     jr $31
 _func_memcpy:       # the copied mem must be 4-aligned
-    lw $8, 0($sp)   # dest addr
-    lw $9, 4($sp)   # src addr
-    lw $10, 8($sp)  # size
+    lw $4, 0($sp)   # dest addr
+    lw $5, 4($sp)   # src addr
+    lw $6, 8($sp)  # size
     j __COND
 __LOOP:
-    lw $2, 0($9)
-    sw $2, 0($8)
-    addiu $8, $8, 4
-    addiu $9, $9, 4
-    addiu $10, $10, -4
+    lw $2, 0($5)
+    sw $2, 0($4)
+    addiu $4, $4, 4
+    addiu $5, $5, 4
+    addiu $6, $6, -4
 __COND:
-    bnez $10, __LOOP
+    bnez $6, __LOOP
     jr $31

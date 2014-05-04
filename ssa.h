@@ -73,6 +73,7 @@ struct CInst {
     } op;
     COpr_t dest, src1, src2;
     CInst_t next, prev;
+    CType_t wtype;  /* for WARR */
     int id;
     int is_def;
     int bret;   /* for CALL */
