@@ -489,6 +489,39 @@ COpr_t ssa_postfix(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {
     return base->dest;
 }
 
+CInst_t compress_branch(COpr_t r, CBlock_t blk, int rev) {
+    int flag = -1;
+    CInst_t b;
+    if (r->kind == TMP)
+    {
+        b = cblock_getback(blk);
+        if (b)
+        {
+            assert(r == b->dest);
+            if (b->op == EQ)
+                flag = 0;
+            else if (b->op == NE)
+                flag = 1;
+        }
+    }
+    if (flag != -1)
+        b->op = flag ? BNE : BEQ;
+    else
+    {
+        b = cinst_create();
+        b->op = BNE;
+        b->src1 = r;
+        b->src2 = copr_create();
+        b->src2->kind = IMM;
+        b->src2->info.imm = 0;
+        cblock_append(blk, b);
+    }
+    b->op ^= rev;
+    b->dest = copr_create();
+    b->dest->kind = IMM;
+    return b;
+}
+
 #define IS_PTR(tt) ((tt) == CPTR || (tt) == CARR)
 COpr_t ssa_exp(CNode *, CBlock_t *, int);
 COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
@@ -651,27 +684,8 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     m->oprs[1] = a1->dest;
                     cblock_pappend(next_blk, m);
 
-                    b = cinst_create();
-                    b->op = BEQ;
-                    b->src1 = r0;
-                    b->src2 = copr_create();
-                    b->src2->kind = IMM;
-                    b->src2->info.imm = 0;
-                    b->dest = copr_create();
-                    b->dest->kind = IMM;
-                    b->dest->info.imm = zero_blk->id + gbbase;
-                    cblock_append(*cur, b);
-
-                    b = cinst_create();
-                    b->op = BEQ;
-                    b->src1 = r1;
-                    b->src2 = copr_create();
-                    b->src2->kind = IMM;
-                    b->src2->info.imm = 0;
-                    b->dest = copr_create();
-                    b->dest->kind = IMM;
-                    b->dest->info.imm = zero_blk->id + gbbase;
-                    cblock_append(else_t, b);
+                    compress_branch(r0, *cur, 1)->dest->info.imm = zero_blk->id + gbbase;
+                    compress_branch(r1, else_t, 1)->dest->info.imm = zero_blk->id + gbbase;
                     zero_blk->ref = 1;
 
                     b = cinst_create();
@@ -739,27 +753,8 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     m->oprs[1] = a0->dest;
                     cblock_pappend(next_blk, m);
 
-                    b = cinst_create();
-                    b->op = BNE;
-                    b->src1 = r0;
-                    b->src2 = copr_create();
-                    b->src2->kind = IMM;
-                    b->src2->info.imm = 0;
-                    b->dest = copr_create();
-                    b->dest->kind = IMM;
-                    b->dest->info.imm = one_blk->id + gbbase;
-                    cblock_append(*cur, b);
-
-                    b = cinst_create();
-                    b->op = BNE;
-                    b->src1 = r1;
-                    b->src2 = copr_create();
-                    b->src2->kind = IMM;
-                    b->src2->info.imm = 0;
-                    b->dest = copr_create();
-                    b->dest->kind = IMM;
-                    b->dest->info.imm = one_blk->id + gbbase;
-                    cblock_append(else_t, b);
+                    compress_branch(r0, *cur, 0)->dest->info.imm = one_blk->id + gbbase;
+                    compress_branch(r1, else_t, 0)->dest->info.imm = one_blk->id + gbbase;
                     one_blk->ref = 1;
 
                     b = cinst_create();
@@ -1081,19 +1076,10 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {/*{{{*/
     CBlock_t loop_h = cblock_create(1), loop_t,
              cond_h= cblock_create(1), cond_t = cond_h,
              next_blk = cblock_create(1);
-    CInst_t j_inst = cinst_create(),
-            if_inst = cinst_create();
-
-    if_inst->op = BNE;
-    if_inst->src2 = copr_create();
-    if_inst->src2->kind = IMM;
-    if_inst->src2->info.imm = 0;
-    if_inst->src1 = ssa_exp(exp, &cond_t, 0);
-    if_inst->dest = copr_create();
-    if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_h->id + gbbase;
+    CInst_t j_inst = cinst_create();
+    COpr_t e = ssa_exp(exp, &cond_t, 0);
+    compress_branch(e, cond_t, 0)->dest->info.imm = loop_h->id + gbbase;
     loop_h->ref = 1;
-    cblock_append(cond_t, if_inst);
 
     DBLINK(cond_t, next_blk);
     loop_t = ssa_stmt(exp->next, loop_h, next_blk);
@@ -1123,19 +1109,10 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {/*{{{*/
     CBlock_t loop_h = cblock_create(1), loop_t,
              cond_h = cblock_create(1), cond_t = cond_h,
              next_blk = cblock_create(1);
-    CInst_t j_inst = cinst_create(),
-            if_inst = cinst_create();
-
-    if_inst->op = BNE;
-    if_inst->src1 = ssa_exp(exp2, &cond_t, 0);
-    if_inst->src2 = copr_create();
-    if_inst->src2->kind = IMM;
-    if_inst->src2->info.imm = 0;
-    if_inst->dest = copr_create();
-    if_inst->dest->kind = IMM;
-    if_inst->dest->info.imm = loop_h->id + gbbase;
+    CInst_t j_inst = cinst_create();
+    COpr_t e = ssa_exp(exp2, &cond_t, 0);
+    compress_branch(e, cond_t, 0)->dest->info.imm = loop_h->id + gbbase;
     loop_h->ref = 1;
-    cblock_append(cond_t, if_inst);
 
     DBLINK(cond_t, next_blk);
     loop_t = ssa_stmt(exp3->next, loop_h, next_blk);
@@ -1166,7 +1143,7 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {/*{{{*/
           *body2 = body1->next;
     CBlock_t then_blk, then_t, next_blk,
              else_blk, else_t;
-    CInst_t if_inst = cinst_create();
+    CInst_t if_inst; /* = cinst_create(); */
     COpr_t rt = ssa_exp(p->chd, &cur, 0);
     if (rt->kind == IMM)
     {
@@ -1178,14 +1155,18 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {/*{{{*/
             return cur;
     }
     then_blk = cblock_create(1);
+    if_inst = compress_branch(rt, cur, 1);
+/* calculated cond */
+    /*
     if_inst->op = BEQ;
-    if_inst->src1 = rt; /* calculated cond */
+    if_inst->src1 = rt; 
     if_inst->src2 = copr_create();
     if_inst->src2->kind = IMM;
     if_inst->src2->info.imm = 0;
     if_inst->dest = copr_create();
     if_inst->dest->kind = IMM;
     cblock_append(cur, if_inst);
+    */
 
     cfg_add_edge(cur, then_blk);
     DBLINK(cur, then_blk);

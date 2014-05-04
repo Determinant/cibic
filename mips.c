@@ -345,16 +345,20 @@ void mips_generate(void) {
                         }
                     }
                     break;
-                case BEQZ:
+                case BEQ:
+                case BNE:
                     {
                         int rs = mips_to_reg(i->src1, reg_v0);
-                        printf("\tbeqz $%d, _L%d\n", rs, i->dest->info.imm);
-                    }
-                    break;
-                case BNEZ:
-                    {
-                        int rs = mips_to_reg(i->src1, reg_v0);
-                        printf("\tbnez $%d, _L%d\n", rs, i->dest->info.imm);
+                        int rt;
+                        const char *b = i->op == BEQ ? "beq" : "bne";
+                        if (i->src2->kind == IMM)
+                            printf("\t%s$%d, %d, _L%d\n", b, rs, i->src2->info.imm,
+                                                                i->dest->info.imm);
+                        else
+                        {
+                            rt = mips_to_reg(i->src2, reg_v1);
+                            printf("\t%s$%d, $%d, _L%d\n", b, rs, rt, i->dest->info.imm);
+                        }
                     }
                     break;
                 case GOTO:
