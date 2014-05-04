@@ -1,8 +1,5 @@
 all: cibic
 
-run: 
-	./cibic --ast
-
 db:
 	gdb cibic
 
@@ -31,8 +28,3 @@ cibic.tab.c: cibic.y
 
 clean:
 	rm -f cibic lex.yy.c cibic.tab.c cibic.tab.h *.o
-
-sem: semantics.o test.o
-	gcc -o sem semantics.o test.o
-test.o: test.c
-	gcc -c test.c -Wall -Wextra -g

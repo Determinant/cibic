@@ -53,15 +53,15 @@ struct COList {
 void colist_remove(COList_t node);
 
 struct CInst {
-    enum {
+    enum OpCode {
         BEQZ,   /* conditional jump */
         BNEZ,
         GOTO,   /* unconditional jump */
         ARR,    /* displacement */
-        WARR,
         PUSH,   /* push to stack top */
         CALL,   /* call function */
         RET,    /* return */
+        WARR,
         MOVE,
         LOAD,   /* load from memory */
         ADDR,   /* get address */
@@ -140,6 +140,23 @@ typedef struct CInterv {
     COpr_t opr;
     CRange_t range;
 } CInterv;
+
+typedef struct CENode CENode; 
+typedef struct CExpMap {
+    struct CENode {
+        CInst_t exp;
+        CENode *next;
+    } *head[MAX_TABLE_SIZE];
+} CExpMap;
+typedef CExpMap *CExpMap_t;
+
+CExpMap_t cexpmap_create(void);
+unsigned int cexpmap_hash(CInst_t exp);
+int cexpmap_comp(CInst_t exp1, CInst_t exp2);
+void cexpmap_insert(CExpMap_t cem, CInst_t exp);
+CInst_t cexpmap_lookup(CExpMap_t cem, CInst_t exp);
+void cexpmap_clear(CExpMap_t cem);
+void cexpmap_destroy(CExpMap_t cem);
 
 void ssa_generate(void);
 COpr_t cinterv_repr(COpr_t opr);

@@ -20,7 +20,7 @@ CBlock_t entry;
 CType_t func;
 COList_t defs;              /* all defintions that have actual effects */
 
-COpr_t copr_create() {
+COpr_t copr_create(void) {
     COpr_t opr = NEW(COpr);
     opr->type = NULL;
     opr->cval = NULL;
@@ -30,7 +30,7 @@ COpr_t copr_create() {
     return opr;
 }
 
-CInst_t cinst_create() {
+CInst_t cinst_create(void) {
     CInst_t inst = NEW(CInst);
     inst->dest = NULL;
     inst->src1 = NULL;
@@ -94,7 +94,7 @@ int cblock_isempty(CBlock_t cblk) {
     return cblk->insts->prev == cblk->insts;
 }
 
-CVar_t ctmp_create() {
+CVar_t ctmp_create(void) {
     static char buff[MAX_NAMELEN];
     sprintf(buff, "t%d", tcnt++);
     return cvar_create(strdup(buff), NULL, NULL);
@@ -106,7 +106,7 @@ void ctmp_destroy(CVar_t type) {
     free(type);
 }
 
-void cfg_clear() {
+void cfg_clear(void) {
     int i;
     for (i = 0; i < MAX_BLOCK; i++)
     {
@@ -126,18 +126,15 @@ void cfg_clear() {
     }
 }
 
-void dtree_clear() {
+void dtree_clear(void) {
     int i;
-    for (i = 0; i < MAX_BLOCK; i++)
-    {
-        CEdge *p, *np;
+    CEdge *p, *np;
+    for (i = 0; i < MAX_BLOCK; dtree.head[i++] = NULL)
         for (p = dtree.head[i]; p; p = np)
         {
             np = p->next;
             free(p);
         }
-        dtree.head[i] = NULL;
-    }
 }
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
@@ -320,7 +317,7 @@ void ssa_func_print(CBlock_t p) {
         cblock_print(p);
 }
 void ssa_func(CType_t);
-void ssa_generate() {
+void ssa_generate(void) {
     CTList_t f;
     mips_prologue();
     for (f = funcs; f; f = f->next)
@@ -1315,7 +1312,7 @@ CBlock_t ssa_comp(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     return cur;
 }
 
-CPSet_t cpset_create() {
+CPSet_t cpset_create(void) {
     CPSet_t res = NEW(CPSet);
     memset(res->head, 0, sizeof res->head);
     return res;
@@ -1332,6 +1329,7 @@ void cpset_destroy(CPSet_t cps) {
             free(p);
         }
     }
+    free(cps);
 }
 
 int cpset_insert(CPSet_t cps, long key) {
@@ -1402,7 +1400,7 @@ int intersect(int b1, int b2) {
     return b1;
 }
 
-void calc_dominant_frontier() {
+void calc_dominant_frontier(void) {
     int i;
     int ch = 1;
     ocnt = 0;
@@ -1638,7 +1636,7 @@ void renaming_vars(COList_t oprs) {
     renaming_dfs(entry);
 }
 
-void mark_insts() {
+void mark_insts(void) {
     int i, icnt = 0;
     for (i = bcnt - 1; i >= 0; i--)
     {
@@ -1723,7 +1721,7 @@ void add_range(COpr_t opr, CBlock_t blk, int end) {
     add_range_(opr, begin, end);
 }
 
-void build_intervals() {
+void build_intervals(void) {
     int i;
     for (i = 0; i < bcnt; i++)
         liveset[i] = cpset_create();
@@ -1851,7 +1849,7 @@ void cinterv_union(COpr_t a, COpr_t b) {
     b->mod |= a->mod;
 }
 
-void init_def() {
+void init_def(void) {
     CBlock_t p;
     COList_t def;
     raw_defs = NULL;
@@ -1887,7 +1885,7 @@ void init_def() {
     }
 }
 
-void print_intervals() {
+void print_intervals(void) {
     COList_t d;
     for (d = raw_defs; d; d = d->next)
     {
@@ -1941,7 +1939,7 @@ int copr_comp(const void *a, const void *b) {
 const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
 const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
 
-void register_alloc() {
+void register_alloc(void) {
     /* Algorithm from the paper:
      * Linear Scan Register Allocation
      * in the Context of SSA Form and Register Constraints */
@@ -2133,7 +2131,7 @@ void register_alloc() {
     free(unhandled);
 }
 
-void const_propagation() {
+void const_propagation(void) {
     int i;
     for (i = bcnt - 1; i >= 0; i--)
     {
@@ -2229,7 +2227,17 @@ void const_propagation() {
     }
 }
 
-void strength_reduction() {
+void strength_reduction(void) {
+#define SWAP_IMM \
+    do { \
+        if (i->src1->kind == IMM) \
+        { \
+            COpr_t t = i->src1; \
+            i->src1 = i->src2; \
+            i->src2 = t; \
+        } \
+    } while (0)
+
     int i;
     for (i = bcnt - 1; i >= 0; i--)
     {
@@ -2241,22 +2249,103 @@ void strength_reduction() {
             switch (i->op)
             {
                 case ADD:
-                    if (i->src1->kind == IMM)
-                    {
-                        COpr_t t = i->src1;
-                        i->src1 = i->src2;
-                        i->src2 = t;
-                    }
+                    SWAP_IMM;
                     if (i->src2->kind == IMM && !i->src2->info.imm)
                     {
                         i->op = MOVE;
                         i->src2 = NULL;
                     }
                     break;
+                case MUL:
+                    SWAP_IMM;
+                    if (i->src2->kind == IMM)
+                    {
+                        int p = 0, n = i->src2->info.imm;
+                        while (!(n & 1)) n >>= 1, p++;
+                        if (n == 1)
+                        {
+                            i->op = SHL;
+                            i->src2->info.imm = p;
+                        }
+                    } 
+                    break;
+
                 default: ;
             }
         }
     }
+}
+
+unsigned int cexpmap_hash(CInst_t exp) {
+    unsigned int res = 0;
+    res = ((unsigned int)exp->op) << 10;
+    res ^= (unsigned long)exp->src1;
+    res = (res << 1) ^ (unsigned long)exp->src2;
+    return res;
+}
+
+CExpMap_t cexpmap_create(void) {
+    CExpMap_t res = NEW(CExpMap);
+    memset(res->head, 0, sizeof res->head);
+    return res;
+}
+
+int cexpmap_comp(CInst_t exp1, CInst_t exp2) {
+    if (exp1->op != exp2->op) return 0;
+    if (exp1->src1 != exp2->src1) return 0;
+    return exp1->src2 == exp2->src2;
+}
+
+void cexpmap_insert(CExpMap_t cem, CInst_t exp) {
+    int hv = cexpmap_hash(exp) % MAX_TABLE_SIZE;
+    CENode *np = NEW(CENode);
+    np->exp = exp;
+    np->next = cem->head[hv];
+    cem->head[hv] = np->next;
+}
+
+CInst_t cexpmap_lookup(CExpMap_t cem, CInst_t exp) {
+    int hv = cexpmap_hash(exp) % MAX_TABLE_SIZE;
+    CENode *p;
+    for (p = cem->head[hv]; p; p = p->next)
+        if (cexpmap_comp(p->exp, exp))
+            return p->exp;
+    return NULL;
+}
+
+void cexpmap_clear(CExpMap_t cem) {
+    int i;
+    CENode *p, *np;
+    for (i = 0; i < MAX_TABLE_SIZE; cem->head[i++] = NULL)
+        for (p = cem->head[i]; p; p = np)
+        {
+            np = p;
+            free(p);
+        }
+}
+
+void cexpmap_destroy(CExpMap_t cem) {
+    cexpmap_clear(cem);
+    free(cem);
+}
+
+void subexp_elimination(void) {
+    int i;
+    CExpMap_t cem = cexpmap_create();
+    for (i = bcnt - 1; i >= 0; i--)
+    {
+        CBlock_t b = blks[vis[i]];
+        CInst_t i, ni, ih = b->insts;
+        for (i = ih->next; i != ih; i = ni)
+        {
+            ni = i->next;
+            switch (i->op)
+            {
+                default: ;
+            }
+        }
+    }
+    cexpmap_destroy(cem);
 }
 
 void ssa_func(CType_t func) {
@@ -2334,6 +2423,7 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
+    subexp_elimination();
     strength_reduction();
     /* out of SSA */
     mark_insts();

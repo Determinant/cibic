@@ -29,7 +29,7 @@ CNode *cnode_create_ast(CNode *wrapped) {
     return wrapped;
 }
 
-CNode *cnode_create_nop() {
+CNode *cnode_create_nop(void) {
     CNode *nop = NEW_CNODE;
     nop->type = NOP;
     nop->next = nop->chd = NULL;

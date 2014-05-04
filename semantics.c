@@ -159,7 +159,7 @@ void ctable_clip(CTable_t ct, const char *key, int max_lvl) {
     ct->head[hv] = p;
 }
 
-CScope_t cscope_create() {
+CScope_t cscope_create(void) {
     CScope_t p = NEW(CScope);
     p->lvl = -1;
     p->top = NULL;
@@ -1624,7 +1624,7 @@ struct DNode{
     DNode *next;
 } *typedef_stack;
 
-void cibic_init() {
+void cibic_init(void) {
     typedef_scope = cscope_create();
     typedef_stack = NULL;
 }
@@ -1667,14 +1667,14 @@ void def_enter(enum DefState kind) {
     typedef_stack = ntop;
 }
 
-void def_exit() {
+void def_exit(void) {
     DNode *ntop = typedef_stack->next;
     free(typedef_stack);
     typedef_stack = ntop;
 }
 
-void block_enter() { cscope_enter(typedef_scope); }
-void block_exit() { cscope_exit(typedef_scope); }
+void block_enter(void) { cscope_enter(typedef_scope); }
+void block_exit(void) { cscope_exit(typedef_scope); }
 
 void ctable_debug_print(CTable_t ct) {
     int i;

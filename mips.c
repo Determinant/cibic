@@ -11,7 +11,7 @@ int memcpy_cnt;
 static int save_pos[32];
 static int used_reg[32]; 
 
-void mips_prologue() {
+void mips_prologue(void) {
     CVList_t v;
     CSList_t s;
     printf(".data 0x10000000\n");
@@ -120,7 +120,7 @@ int mips_to_reg(COpr_t opr, int reg0) {
     return reg0;
 }
 
-void mips_memcpy() {
+void mips_memcpy(void) {
     printf("\tj _mem_cond%d\n", memcpy_cnt);
     printf("_mem_loop%d:\n", memcpy_cnt);
     printf("\tlw $5, 0($%d)\n", reg_v0);
@@ -135,7 +135,7 @@ void mips_memcpy() {
 
 /* memcpy requires three arguments */
 #define RESERVED_CALL_SIZE 12
-void mips_space_alloc() {
+void mips_space_alloc(void) {
     int local_size = func->rec.func.local_size;
     int arg_size = RESERVED_CALL_SIZE;
     int bret_size = 0;
@@ -244,7 +244,7 @@ void mips_space_alloc() {
     func->rec.func.frame_size = prev;
 }
 
-void mips_func_begin() {
+void mips_func_begin(void) {
     int fsize = func->rec.func.frame_size;
     if (fsize < 0x8000)
         printf("\taddiu $sp, $sp, -%d\n", fsize);
@@ -256,7 +256,7 @@ void mips_func_begin() {
     printf("\tsw $31, %d($sp) #%s\n", fsize - 4, func->name);
 }
 
-void mips_func_end() {
+void mips_func_end(void) {
     int fsize = func->rec.func.frame_size;
     printf("_ret_%s:\n", func->name);
     printf("\tlw $31, %d($sp)\n", fsize - 4);
@@ -272,7 +272,7 @@ void mips_func_end() {
 
 #define IN_IMM(x) (-0x8000 <= (x) && (x) < 0x8000)
 
-void mips_generate() {
+void mips_generate(void) {
     CBlock_t p;
     CType_t rt = func->rec.func.ret;
     /* int arg_cnt = 0; */
@@ -289,7 +289,7 @@ void mips_generate() {
         const char *bop;
         for (i = ih->next; i != ih; i = i->next)
         {
-            int flag = 1, swap;
+            int flag = 1, swap, rimm;
             if (i->dest && i->dest->reg == -2 && i->dest->kind == TMP && i->op != CALL)
                 continue;
             printf("# ");
@@ -590,26 +590,26 @@ void mips_generate() {
             }
             if (flag) continue;
             flag = 1;
-            swap = 0;
+            swap = rimm = 0;
             switch (i->op)
             {
-                case MUL: bop = "mul"; break;
-                case DIV: bop = "divu"; break;
-                case MOD: bop = "rem"; break;
-                case ADD: bop = "addu"; swap = 1; break;
-                case SUB: bop = "subu"; break;
-                case SHL: bop = "sllv"; break;
-                case SHR: bop = "srlv"; break;
-                case AND: bop = "and"; swap = 1; break;
-                case XOR: bop = "xor"; swap = 1; break;
-                case OR: bop = "or"; swap = 1; break;
-                case NOR: bop = "nor"; break;
-                case EQ: bop = "seq"; break;
-                case NE: bop = "sne"; break;
-                case LT: bop = "slt"; break;
-                case GT: bop = "sgt"; break;
-                case LE: bop = "sle"; break;
-                case GE: bop = "sge"; break;
+                case MUL: bop = "mul"; rimm = 1; break;
+                case DIV: bop = "divu"; rimm = 1; break;
+                case MOD: bop = "rem"; rimm = 1; break;
+                case ADD: bop = "addu"; rimm = swap = 1; break;
+                case SUB: bop = "subu"; rimm = 1; break;
+                case SHL: bop = "sllv"; rimm = 1; break;
+                case SHR: bop = "srlv"; rimm = 1; break;
+                case AND: bop = "and"; rimm = swap = 1; break;
+                case XOR: bop = "xor"; rimm = swap = 1; break;
+                case OR: bop = "or"; rimm = swap = 1; break;
+                case NOR: bop = "nor"; rimm = 1; break;
+                case EQ: bop = "seq"; rimm = 1; break;
+                case NE: bop = "sne"; rimm = 1; break;
+                case LT: bop = "slt"; rimm = 1; break;
+                case GT: bop = "sgt"; rimm = 1; break;
+                case LE: bop = "sle"; rimm = 1; break;
+                case GE: bop = "sge"; rimm = 1; break;
                 default: flag = 0;
             }
             if (flag)
@@ -617,10 +617,10 @@ void mips_generate() {
                 int rs, rt;
                 int rd = i->dest->reg;
                 if (rd < 0) rd = reg_v0;
-                if (swap)
+                if (rimm)
                 {
                     COpr_t t;
-                    if (i->src1->kind == IMM)
+                    if (swap && i->src1->kind == IMM)
                     {
                         t = i->src1;
                         i->src1 = i->src2;
@@ -634,15 +634,17 @@ void mips_generate() {
                             case AND: bop = "andi"; break;
                             case XOR: bop = "xori"; break;
                             case OR: bop = "ori"; break;
+                            case SHL: bop = "sll"; break;
+                            case SHR: bop = "srl"; break;
                             default: ;
                         }
                         rs = mips_to_reg(i->src1, reg_v0);
                         printf("\t%s $%d, $%d, %d\n",
                                 bop, rd, rs, i->src2->info.imm);
                     }
-                    else swap = 0;
+                    else rimm = 0;
                 }
-                if (!swap)
+                if (!rimm)
                 {
                     rs = mips_to_reg(i->src1, reg_v0);
                     rt = mips_to_reg(i->src2, reg_v1);
