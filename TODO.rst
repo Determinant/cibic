@@ -22,7 +22,7 @@ TODO
   - const function name (done)
   - remove the redundant edge from blocks that break a loop
   - ``<<`` operation in pre-calculation (done)
-  - support ``addui``, ``sll``, etc. (almost done)
+  - support ``addui``, ``sll``, etc. (done)
 
 - Not Implemented:
 

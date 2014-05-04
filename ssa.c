@@ -1156,17 +1156,6 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {/*{{{*/
     }
     then_blk = cblock_create(1);
     if_inst = compress_branch(rt, cur, 1);
-/* calculated cond */
-    /*
-    if_inst->op = BEQ;
-    if_inst->src1 = rt; 
-    if_inst->src2 = copr_create();
-    if_inst->src2->kind = IMM;
-    if_inst->src2->info.imm = 0;
-    if_inst->dest = copr_create();
-    if_inst->dest->kind = IMM;
-    cblock_append(cur, if_inst);
-    */
 
     cfg_add_edge(cur, then_blk);
     DBLINK(cur, then_blk);

@@ -91,7 +91,6 @@ void mips_store(int reg, COpr_t opr) {
     CVar_t var = opr->spill->info.var;
     CType_t type = opr->type;
     const char *l = type->type == CCHAR ? "sb" : "sw";
-    /* TODO: struct */
     if (var->loc > 0)
         printf("\t%s $%d, _%s\n", l, reg, var->name);
     else if (opr->reg == -1)
@@ -304,7 +303,6 @@ void mips_generate(void) {
                     break;
                 case MOVE:
                     {
-                        /* TODO: struct */
                         int rs;
                         int rd = i->dest->reg;
                         CType_t type = i->dest->type;
