@@ -350,7 +350,7 @@ void mips_generate(void) {
                         int rt;
                         const char *b = i->op == BEQ ? "beq" : "bne";
                         if (i->src2->kind == IMM)
-                            printf("\t%s$%d, %d, _L%d\n", b, rs, i->src2->info.imm,
+                            printf("\t%s $%d, %d, _L%d\n", b, rs, i->src2->info.imm,
                                                                 i->dest->info.imm);
                         else
                         {

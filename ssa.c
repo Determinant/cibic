@@ -191,7 +191,7 @@ void cinst_print(FILE *f, CInst_t inst) {
         case BEQ:
             fprintf(f, "if (");
             copr_print(f, inst->src1);
-            fprintf(f, " != ");
+            fprintf(f, " == ");
             copr_print(f, inst->src2);
             fprintf(f, ") goto _L");
             copr_print(f, inst->dest);
@@ -647,11 +647,11 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     CBlock_t else_h = cblock_create(1), else_t = else_h,
                              one_blk = cblock_create(1),
                              zero_blk = cblock_create(1),
-                             next_blk = cblock_create(1);
-                    COpr_t r0 = ssa_exp_(p->chd, cur, NULL, succ),
-                           r1 = ssa_exp_(p->chd->next, &else_t, NULL, succ);
+                             next_blk = cblock_create(1), sblk;
+                    COpr_t r0, r1, ri;
                     CInst_t b, a0, a1;
                     CPhi_t m = NEW(CPhi);
+                    CNode *t;
                     /* constant opt */
                     a0 = cinst_create();
                     a0->op = MOVE;
@@ -684,9 +684,27 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     m->oprs[1] = a1->dest;
                     cblock_pappend(next_blk, m);
 
-                    compress_branch(r0, *cur, 1)->dest->info.imm = zero_blk->id + gbbase;
+                    r1 = ssa_exp_(p->chd->next, &else_t, NULL, succ);
                     compress_branch(r1, else_t, 1)->dest->info.imm = zero_blk->id + gbbase;
                     zero_blk->ref = 1;
+
+                    sblk = else_h;
+                    for (t = p->chd; t->rec.subtype == OPT_AND; t = t->chd)
+                    {
+                        CBlock_t c_h = cblock_create(1), c_t = c_h;
+                        ri = ssa_exp_(t->chd->next, &c_t, NULL, succ);
+                        compress_branch(ri, c_t, 1)->dest->info.imm = zero_blk->id + gbbase;
+                        cfg_add_edge(c_t, zero_blk);  /* tail */
+                        DBLINK(c_t, sblk);
+                        cfg_add_edge(c_t, sblk);      /* connect to header */
+                        sblk = c_h;
+                    }
+
+                    r0 = ssa_exp_(t, cur, NULL, succ);
+                    compress_branch(r0, *cur, 1)->dest->info.imm = zero_blk->id + gbbase;
+                    cfg_add_edge(*cur, zero_blk);
+                    DBLINK(*cur, sblk);
+                    cfg_add_edge(*cur, sblk);
 
                     b = cinst_create();
                     b->op = GOTO;
@@ -696,13 +714,10 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     cblock_append(one_blk, b);
                     next_blk->ref = 1;
 
-                    DBLINK(*cur, else_h);
                     DBLINK(else_t, one_blk);
                     DBLINK(one_blk, zero_blk);
                     DBLINK(zero_blk, next_blk);
 
-                    cfg_add_edge(*cur, else_h);
-                    cfg_add_edge(*cur, zero_blk);
                     cfg_add_edge(else_t, one_blk);
                     cfg_add_edge(else_t, zero_blk);
                     cfg_add_edge(one_blk, next_blk);
@@ -716,11 +731,11 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     CBlock_t else_h = cblock_create(1), else_t = else_h,
                              one_blk = cblock_create(1),
                              zero_blk = cblock_create(1),
-                             next_blk = cblock_create(1);
-                    COpr_t r0 = ssa_exp_(p->chd, cur, NULL, succ),
-                           r1 = ssa_exp_(p->chd->next, &else_t, NULL, succ);
+                             next_blk = cblock_create(1), sblk;
+                    COpr_t r0, r1, ri;
                     CInst_t b, a0, a1;
                     CPhi_t m = NEW(CPhi);
+                    CNode *t;
                     /* constant opt */
                     a0 = cinst_create();
                     a0->op = MOVE;
@@ -753,9 +768,27 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     m->oprs[1] = a0->dest;
                     cblock_pappend(next_blk, m);
 
-                    compress_branch(r0, *cur, 0)->dest->info.imm = one_blk->id + gbbase;
+                    r1 = ssa_exp_(p->chd->next, &else_t, NULL, succ);
                     compress_branch(r1, else_t, 0)->dest->info.imm = one_blk->id + gbbase;
                     one_blk->ref = 1;
+
+                    sblk = else_h;
+                    for (t = p->chd; t->rec.subtype == OPT_OR; t = t->chd)
+                    {
+                        CBlock_t c_h = cblock_create(1), c_t = c_h;
+                        ri = ssa_exp_(t->chd->next, &c_t, NULL, succ);
+                        compress_branch(ri, c_t, 0)->dest->info.imm = one_blk->id + gbbase;
+                        cfg_add_edge(c_t, one_blk);  /* tail */
+                        DBLINK(c_t, sblk);
+                        cfg_add_edge(c_t, sblk);      /* connect to header */
+                        sblk = c_h;
+                    }
+
+                    r0 = ssa_exp_(t, cur, NULL, succ);
+                    compress_branch(r0, *cur, 0)->dest->info.imm = one_blk->id + gbbase;
+                    cfg_add_edge(*cur, one_blk);
+                    DBLINK(*cur, sblk);
+                    cfg_add_edge(*cur, sblk);
 
                     b = cinst_create();
                     b->op = GOTO;
@@ -765,13 +798,10 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     cblock_append(zero_blk, b);
                     next_blk->ref = 1;
 
-                    DBLINK(*cur, else_h);
                     DBLINK(else_t, zero_blk);
                     DBLINK(zero_blk, one_blk);
                     DBLINK(one_blk, next_blk);
 
-                    cfg_add_edge(*cur, else_h);
-                    cfg_add_edge(*cur, one_blk);
                     cfg_add_edge(else_t, zero_blk);
                     cfg_add_edge(else_t, one_blk);
                     cfg_add_edge(zero_blk, next_blk);
