@@ -1096,16 +1096,7 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
                 ERROR((p, "array subscript is not an integer"));
             p->ext.is_const = 0;
             if (t1 == CARR)
-            {
                 op1.type = op1.type->rec.arr.elem;
-                if ((p->ext.is_const = p->chd->ext.is_const && \
-                                        post->chd->ext.is_const))
-                {
-                    p->ext.offset = p->chd->ext.offset + \
-                                    calc_size(op1.type) * post->chd->ext.const_val;
-                    p->ext.var = p->chd->ext.var;
-                }
-            }
             else
                 op1.type = op1.type->rec.ref;
             op1.lval = 1;
