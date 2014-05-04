@@ -59,6 +59,7 @@ static CType_t basic_type_void;
 static CType_t builtin_printf;
 static CType_t builtin_scanf;
 static CType_t builtin_malloc;
+static CType_t builtin_memcpy;
 static CType_t builtin_print_int;
 static CType_t builtin_print_char;
 static CType_t builtin_print_string;
@@ -1874,6 +1875,7 @@ void semantics_check(CNode *p) {
     builtin_print_int = make_builtin_func("__print_int", basic_type_int);
     builtin_print_char = make_builtin_func("__print_char", basic_type_int);
     builtin_print_string = make_builtin_func("__print_string", basic_type_int);
+    builtin_memcpy = make_builtin_func("memcpy", basic_type_void);
     {
         CType_t vstar = ctype_create("", CPTR, NULL);
         vstar->rec.ref = basic_type_void;
@@ -1886,6 +1888,7 @@ void semantics_check(CNode *p) {
     cscope_push_type(scope, builtin_printf, NS_ID);
     cscope_push_type(scope, builtin_scanf, NS_ID);
     cscope_push_type(scope, builtin_malloc, NS_ID);
+    cscope_push_type(scope, builtin_memcpy, NS_ID);
     cscope_push_type(scope, builtin_print_int, NS_ID);
     cscope_push_type(scope, builtin_print_char, NS_ID);
     cscope_push_type(scope, builtin_print_string, NS_ID);

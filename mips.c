@@ -54,6 +54,7 @@ void mips_prologue() {
         else
             printf("\t.space %d\n", calc_size(var->type));
     }
+    printf("\t.align 2\n");
     for (s = cstrs; s; s = s->next)
     {
         printf("_str_%d:\n", s->id);
