@@ -54,8 +54,8 @@ void colist_remove(COList_t node);
 
 struct CInst {
     enum OpCode {
-        BEQZ,   /* conditional jump */
-        BNEZ,
+        BEQ,   /* conditional jump */
+        BNE,
         GOTO,   /* unconditional jump */
         ARR,    /* displacement */
         PUSH,   /* push to stack top */

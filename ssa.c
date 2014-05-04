@@ -188,15 +188,19 @@ void cinst_print(FILE *f, CInst_t inst) {
             fprintf(f, " = ");
             copr_print(f, inst->src1);
             break;
-        case BEQZ:
-            fprintf(f, "if not (");
+        case BEQ:
+            fprintf(f, "if (");
             copr_print(f, inst->src1);
+            fprintf(f, " != ");
+            copr_print(f, inst->src2);
             fprintf(f, ") goto _L");
             copr_print(f, inst->dest);
             break;
-        case BNEZ:
+        case BNE:
             fprintf(f, "if (");
             copr_print(f, inst->src1);
+            fprintf(f, " != ");
+            copr_print(f, inst->src2);
             fprintf(f, ") goto _L");
             copr_print(f, inst->dest);
             break;
@@ -648,16 +652,22 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     cblock_pappend(next_blk, m);
 
                     b = cinst_create();
-                    b->op = BEQZ;
+                    b->op = BEQ;
                     b->src1 = r0;
+                    b->src2 = copr_create();
+                    b->src2->kind = IMM;
+                    b->src2->info.imm = 0;
                     b->dest = copr_create();
                     b->dest->kind = IMM;
                     b->dest->info.imm = zero_blk->id + gbbase;
                     cblock_append(*cur, b);
 
                     b = cinst_create();
-                    b->op = BEQZ;
+                    b->op = BEQ;
                     b->src1 = r1;
+                    b->src2 = copr_create();
+                    b->src2->kind = IMM;
+                    b->src2->info.imm = 0;
                     b->dest = copr_create();
                     b->dest->kind = IMM;
                     b->dest->info.imm = zero_blk->id + gbbase;
@@ -730,16 +740,22 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                     cblock_pappend(next_blk, m);
 
                     b = cinst_create();
-                    b->op = BNEZ;
+                    b->op = BNE;
                     b->src1 = r0;
+                    b->src2 = copr_create();
+                    b->src2->kind = IMM;
+                    b->src2->info.imm = 0;
                     b->dest = copr_create();
                     b->dest->kind = IMM;
                     b->dest->info.imm = one_blk->id + gbbase;
                     cblock_append(*cur, b);
 
                     b = cinst_create();
-                    b->op = BNEZ;
+                    b->op = BNE;
                     b->src1 = r1;
+                    b->src2 = copr_create();
+                    b->src2->kind = IMM;
+                    b->src2->info.imm = 0;
                     b->dest = copr_create();
                     b->dest->kind = IMM;
                     b->dest->info.imm = one_blk->id + gbbase;
@@ -1068,7 +1084,10 @@ CBlock_t ssa_while(CNode *p, CBlock_t cur) {/*{{{*/
     CInst_t j_inst = cinst_create(),
             if_inst = cinst_create();
 
-    if_inst->op = BNEZ;
+    if_inst->op = BNE;
+    if_inst->src2 = copr_create();
+    if_inst->src2->kind = IMM;
+    if_inst->src2->info.imm = 0;
     if_inst->src1 = ssa_exp(exp, &cond_t, 0);
     if_inst->dest = copr_create();
     if_inst->dest->kind = IMM;
@@ -1107,8 +1126,11 @@ CBlock_t ssa_for(CNode *p, CBlock_t cur) {/*{{{*/
     CInst_t j_inst = cinst_create(),
             if_inst = cinst_create();
 
-    if_inst->op = BNEZ;
+    if_inst->op = BNE;
     if_inst->src1 = ssa_exp(exp2, &cond_t, 0);
+    if_inst->src2 = copr_create();
+    if_inst->src2->kind = IMM;
+    if_inst->src2->info.imm = 0;
     if_inst->dest = copr_create();
     if_inst->dest->kind = IMM;
     if_inst->dest->info.imm = loop_h->id + gbbase;
@@ -1156,8 +1178,11 @@ CBlock_t ssa_if(CNode *p, CBlock_t cur, CBlock_t loop_exit) {/*{{{*/
             return cur;
     }
     then_blk = cblock_create(1);
-    if_inst->op = BEQZ;
+    if_inst->op = BEQ;
     if_inst->src1 = rt; /* calculated cond */
+    if_inst->src2 = copr_create();
+    if_inst->src2->kind = IMM;
+    if_inst->src2->info.imm = 0;
     if_inst->dest = copr_create();
     if_inst->dest->kind = IMM;
     cblock_append(cur, if_inst);
