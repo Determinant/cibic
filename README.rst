@@ -13,6 +13,8 @@ Features
 - Complex cast support (``(int (*)())addr``, ``(int (*)[10])addr``, etc.)
 - ``typedef`` support (together with complex decl)
 - Forward declaration
+- Real Single Static Assignment (with dominator frontier, renaming, interval
+  building and registor allocation algorithm)
 - Sophisticated semantic checking
 - Small memory footprint
 - Sophisticated error reporting
