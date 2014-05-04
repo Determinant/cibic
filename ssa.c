@@ -2283,10 +2283,17 @@ void ssa_func(CType_t func) {
     CPSet_t vs = cpset_create(), avs = cpset_create();
     CVList_t vars = NULL;
     COList_t all_oprs = NULL;
+    CVar_t pr;
     int i;
     cfg_clear();
     dtree_clear();
     ssa_comp(func->rec.func.body, entry, NULL);
+    for (i = 0, pr = func->rec.func.params;
+        i < 4 && pr;
+        i++, pr = pr->next)
+    {
+    }
+
     for (p = entry; p; p = p->next)
     {
         CInst_t head = p->insts, i;

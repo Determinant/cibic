@@ -270,7 +270,7 @@ CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     cv->ast = ast;
     cv->initr = NULL;
     cv->defsite = NULL;
-    cv->global = 0;
+    cv->loc = 0;
     cv->weight = 0;
     return cv;
 }
@@ -1950,7 +1950,7 @@ void semantics_check(CNode *p) {
                     CVList_t nv = NEW(CVList);
                     nv->var = tp->rec.var;
                     nv->next = gvars;
-                    nv->var->global = 1;
+                    nv->var->loc = 1;
                     gvars = nv;
                 }
             }
