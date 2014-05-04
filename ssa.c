@@ -1459,15 +1459,6 @@ void calc_dominant_frontier() {
         }
     for (i = 1; i < bcnt; i++)
         dtree_add_edge(blks[ord[dom[vis[i]]]], blks[i]);
-    /*
-    for (i = 0; i < bcnt; i++)
-    {
-        CBList_t p = df[i];
-        printf("%d: ", i);
-        for (; p; p = p->next)
-            printf("%d ", p->cblk->id); puts("");
-    }
-    */
 }
 
 void insert_phi(CVList_t vars) {
@@ -1731,44 +1722,9 @@ void add_range(COpr_t opr, CBlock_t blk, int end) {
         begin = blk->first;
     add_range_(opr, begin, end);
 }
-/*
-int low[MAX_BLOCK], dfn[MAX_BLOCK], dcnt;
-int loop_tail[MAX_BLOCK];
-*/
-
-/*
-void find_loop_tail(CBlock_t u) {
-    CEdge *e;
-    low[u->id] = bcnt;
-    dfn[u->id] = dcnt++;
-    for (e = cfg.head[u->id]; e; e = e->next)
-    {
-        CBlock_t v = e->to;
-        if (dfn[v->id] == -1)
-        {
-            find_loop_tail(v);
-            if (low[v->id] < dfn[u->id] && low[v->id] < low[u->id])
-            {
-                low[u->id] = low[v->id];
-                loop_tail[u->id] = loop_tail[v->id];
-            }
-        }
-        else if (dfn[v->id] < dfn[u->id] && dfn[v->id] < low[u->id])
-        {
-            low[u->id] = dfn[v->id];
-            loop_tail[u->id] = u->id;
-        }
-    }
-}
-*/
 
 void build_intervals() {
     int i;
-    /*
-    dcnt = 0;
-    memset(dfn, -1, sizeof dfn);
-    find_loop_tail(entry);
-    */
     for (i = 0; i < bcnt; i++)
         liveset[i] = cpset_create();
     for (i = 0; i < bcnt; i++)
@@ -1861,15 +1817,7 @@ void build_intervals() {
             COList_t p;
             for (p = live[id]; p; p = p->next) 
                 if (cpset_belongs(curlive, (long)p->opr))
-                {
-                    /*
-                    int j;
-                    for (j = loop_tail[id]; j != id; j = par[j])
-                        add_range_(p->opr, blks[j]->first, blks[j]->last + 1);
-                    add_range_(p->opr, b->first, b->last + 1);
-                    */
                     add_range_(p->opr, b->first, blks[loop_tail[id]]->last + 1);
-                }
         }
     }
     for (i = 0; i < bcnt; i++)

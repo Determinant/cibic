@@ -446,14 +446,6 @@ void mips_generate() {
                         CType_t type = i->src1->type;
                         if (type && (type->type == CSTRUCT || type->type == CUNION))
                         {
-                            /*
-                            printf("\tsw $%d, 4($sp)\n", rs);
-                            printf("\taddiu $%d, $sp, %d\n", reg_v0, i->offset);
-                            printf("\tsw $%d, 0($sp)\n", reg_v0);
-                            printf("\tli $%d, %d\n", reg_v0, calc_size(type));
-                            printf("\tsw $%d, 8($sp)\n", reg_v0);
-                            printf("\tjal _func_memcpy\n");
-                            */
                             printf("\taddiu $%d, $sp, %d\n", reg_v1, i->offset);
                             printf("\tmove $%d, $%d\n", reg_v0, rs);
                             printf("\tli $a0, %d\n", calc_size(type));
@@ -515,7 +507,8 @@ void mips_generate() {
                             {
                                 if (rd == -1) 
                                     rd = mips_to_reg(i->dest, reg_v1);
-                                printf("\tmove $%d, $%d\n", reg_v1, rd);
+                                if (reg_v1 != rd)
+                                    printf("\tmove $%d, $%d\n", reg_v1, rd);
                                 printf("\tli $a0, %d\n", calc_size(i->dest->type));
                                 mips_memcpy();
                             }
@@ -523,10 +516,6 @@ void mips_generate() {
                             {
                                 if (rd != -1) 
                                     printf("\tmove $%d, $%d\n", rd, reg_v0);
-                                /*
-                                else
-                                    rd = reg_v0;
-                                    */
                                 if (i->dest->reg == -1 || i->dest->kind == VAR)
                                     mips_store(reg_v0, i->dest);
                             }
