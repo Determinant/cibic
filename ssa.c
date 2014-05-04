@@ -1626,6 +1626,7 @@ void renaming_vars(COList_t oprs) {
             CInst_t ld = cinst_create();
             CVar_t var = p->opr->info.var;
             var->cnt = 0;
+            p->opr->mod = var->loc > 0 && var->type->type != CARR;
             ld->op = LOAD;
             ld->dest = copr_create();
             ld->dest->kind = VAR;
