@@ -1,5 +1,6 @@
 int printf(char *fmt) {
     char *arg, ch;
+    int len, x;
     arg = (int)&fmt + sizeof(char*);
     while ((ch = *fmt))
     {
@@ -14,7 +15,7 @@ int printf(char *fmt) {
                 __print_string(*(char **)arg);
             else
             {
-                int len, x = *(int *)arg;
+                x = *(int *)arg;
                 if (!x) len = 1;
                 else
                     for (len = 0; x; x /= 10, len++);

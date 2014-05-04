@@ -254,6 +254,7 @@ void mips_func_end() {
 
 void mips_generate() {
     CBlock_t p;
+    /* int arg_cnt = 0; */
     mips_space_alloc();
     if (strcmp(func->name, "main"))
         printf("_func_%s:\n",func->name);
@@ -275,7 +276,9 @@ void mips_generate() {
             switch (i->op)
             {
                 case LOAD:
-                    if (i->dest->kind == VAR && i->dest->reg > 0)
+                    if (i->dest->kind == VAR &&
+                            i->dest->reg > 0) /* && 
+                             i->dest->info.var->loc >= 0) */
                         mips_load(i->dest->reg, i->dest);
                     break;
                 case MOVE:
@@ -364,8 +367,18 @@ void mips_generate() {
                 case PUSH:
                     {
                         int rs = mips_to_reg(i->src1, reg_v0);
+                        /*
+                        if (arg_cnt < 4)
+                        {
+                            printf("\tmove $%d, $%d\n", arg_cnt + 4, rs);
+                        }
+                        else
+                        {
+                        */
                         /* TODO: push struct */
                         printf("\tsw $%d, %d($sp) # push\n", rs, i->offset);
+                        /* } 
+                        arg_cnt++; */
                     }
                     break;
                 case CALL:
