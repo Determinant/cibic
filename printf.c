@@ -29,4 +29,3 @@ int printf(char *fmt) {
         fmt++;
     }
 }
-

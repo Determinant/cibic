@@ -7,7 +7,8 @@
 
 int reg_v0 = 2;
 int reg_v1 = 3;
-COpr_t status[32];
+static int save_pos[32];
+static int used_reg[32]; 
 
 void mips_prologue() {
     CVList_t v;
@@ -111,7 +112,11 @@ int mips_to_reg(COpr_t opr, int reg0) {
         printf("\tla $%d, _func_%s\n", reg0, opr->info.str);
         return reg0;
     }
-    if (opr->reg != -1) return opr->reg;
+    if (opr->reg != -1) 
+    {
+        used_reg[opr->reg] = 1;
+        return opr->reg;
+    }
     mips_load(reg0, opr);
     return reg0;
 }
@@ -123,6 +128,7 @@ void mips_space_alloc() {
     int tmp_size = 0;
     int offset = 0;
     int prev = 0;
+    int save_size = MAX_AVAIL_REGS * INT_SIZE;
     CBlock_t p;
     COList_t d;
     CVar_t v;
@@ -130,7 +136,7 @@ void mips_space_alloc() {
     {
         COpr_t opr = d->opr;
         assert(opr->par == opr);
-        if (opr->kind == TMP)
+        if (opr->kind == TMP && opr->reg == -1)
         {
             int t = opr->type->type;
             tmp_size += align_shift(tmp_size);
@@ -190,12 +196,18 @@ void mips_space_alloc() {
         v->start += prev;
     prev += local_size;
     prev += align_shift(prev);
+    {
+        int i;
+        for (i = 0; i < MAX_AVAIL_REGS; i++)
+            save_pos[avail_regs[i]] = prev + i * INT_SIZE;
+    }
+    prev += save_size;
     /* adjust offset for spilled temporaries */
     for (d = defs; d; d = d->next)
     {
         COpr_t opr = d->opr;
         assert(opr->par == opr);
-        if (opr->kind == TMP)
+        if (opr->kind == TMP && opr->reg == -1)
             opr->info.var->start += prev;
     }
     prev += tmp_size;
@@ -245,6 +257,10 @@ void mips_func_end() {
 
 void mips_generate() {
     CBlock_t p;
+    int i;
+    memset(used_reg, 0, sizeof used_reg);
+    for (i = 0; i < MAX_AVAIL_REGS; i++)
+        used_reg[avail_regs[i]] = 1;
     mips_space_alloc();
     if (strcmp(func->name, "main"))
         printf("_func_%s:\n",func->name);
@@ -259,6 +275,8 @@ void mips_generate() {
         for (i = ih->next; i != ih; i = i->next)
         {
             int flag = 1, swap;
+            if (i->dest && i->dest->reg == -2 && i->dest->kind == TMP && i->op != CALL)
+                continue;
             printf("# ");
             cinst_print(stdout, i);
             switch (i->op)
@@ -273,7 +291,11 @@ void mips_generate() {
                         int rs = mips_to_reg(i->src1, reg_v0);
                         int rd = i->dest->reg;
                         if (rd > 0)
+                        {
+                            used_reg[rd] = 1;
+                            assert(rd);
                             printf("\tmove $%d $%d\n", rd, rs);
+                        }
                         else
                             rd = rs;
                         if (i->dest->reg == -1 || i->dest->kind == VAR)
@@ -311,35 +333,25 @@ void mips_generate() {
                             int index = i->src2->info.imm;
                             rd = i->dest->reg;
                             if (rd == -1) rd = reg_v1;
-                            /*
-                            if (type->type == CSTRUCT || type->type == CUNION)
+                            else 
                             {
-                                if (IN_IMM(index))
-                                    printf("\taddiu $%d, $%d, %d\n", rd, arr, index);
-                                else
-                                {
-                                    printf("\tli $%d, %d\n", reg_v1, index);
-                                    printf("\taddu $%d, $%d, $%d\n", rd, arr, reg_v1);
-                                }
+                                used_reg[rd] = 1;
+                                assert(rd);
                             }
-                            else
-                            */
-                                printf("\t%s $%d, %d($%d)\n", l, rd, index, arr);
+                            printf("\t%s $%d, %d($%d)\n", l, rd, index, arr);
                         }
                         else
                         {
                             int index = mips_to_reg(i->src2, reg_v1);
                             rd = i->dest->reg;
-                            if (rd == -1) rd = reg_v0;
-                            /*
-                            if (type->type == CSTRUCT || type->type == CUNION)
-                                printf("\taddu $%d, $%d, $%d\n", rd, arr, index);
-                            else
-                            */
+                            if (rd < 0) rd = reg_v0;
+                            else 
                             {
-                                printf("\taddu $%d, $%d, $%d\n", index, arr, index);
-                                printf("\t%s $%d, 0($%d)\n", l, rd, index);
+                                used_reg[rd] = 1;
+                                assert(rd);
                             }
+                            printf("\taddu $%d, $%d, $%d\n", reg_v1, arr, index);
+                            printf("\t%s $%d, 0($%d)\n", l, rd, reg_v1);
                         }
                         if (i->dest->reg == -1 || i->dest->kind == VAR)
                             mips_store(rd, i->dest);
@@ -364,9 +376,9 @@ void mips_generate() {
                         else
                         {
                             int index = mips_to_reg(i->src2, reg_v1);
-                            printf("\taddu $%d, $%d, $%d\n", index, arr, index);
+                            printf("\taddu $%d, $%d, $%d\n", reg_v1, arr, index);
                             rs = mips_to_reg(i->src1, reg_v0);
-                            printf("\t%s $%d, 0($%d)\n", s, rs, index);
+                            printf("\t%s $%d, 0($%d)\n", s, rs, reg_v1);
                         }
                     }
                     break;
@@ -379,17 +391,47 @@ void mips_generate() {
                     break;
                 case CALL:
                     {
+                        COList_t p;
                         int rd = i->dest->reg;
+                        int j;
+                        memset(used_reg, 0, sizeof used_reg);
+                        for (p = defs; p; p = p->next)
+                        {
+                            COpr_t opr = p->opr;
+                            if (opr->reg != -1 && 
+                                (opr->kind == TMP || !opr->info.var->global) &&
+                                overlap_with_beg(opr, i->id))
+                                used_reg[opr->reg] = 1;
+                        }
+                        for (j = 0; j < 32; j++)
+                            if (used_reg[j])
+                                printf("\tsw $%d, %d($sp) # save reg\n", j, save_pos[j]);
                         if (i->src1->kind == IMMF)
                             printf("\tjal %s%s\n", 
                                     strcmp(i->src1->info.str, "main") ? "_func_" : "",
                                     i->src1->info.str);
                         else
                             printf("\tjalr $%d\n", mips_to_reg(i->src1, reg_v0));
+                        for (j = 0; j < 32; j++)
+                            if (used_reg[j])
+                                printf("\tlw $%d, %d($sp) # load reg\n", j, save_pos[j]);
+                        for (p = defs; p; p = p->next)
+                        {
+                            COpr_t opr = p->opr;
+                            if (opr->reg != -1 &&
+                                opr->kind == VAR &&
+                                opr->info.var->global &&
+                                overlap_with_beg(opr, i->id))
+                                mips_load(opr->reg, opr);
+                        }
                         if (rd != -2)
                         {
                             if (rd != -1) 
+                            {
+                                used_reg[rd] = 1;
+                            assert(rd);
                                 printf("\tmove $%d, $%d\n", rd, reg_v0);
+                            }
                             else
                                 rd = reg_v0;
                             if (i->dest->reg == -1 || i->dest->kind == VAR)
@@ -402,7 +444,15 @@ void mips_generate() {
                         if (i->src1)
                         {
                             if (i->src1->reg != -1)
-                                printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
+                            {
+                                if (i->src1->kind == IMM)
+                                    printf("\tli$%d, %d\n", reg_v0, i->src1->info.imm);
+                                else
+                                {
+                                    used_reg[i->src1->reg] = 1;
+                                    printf("\tmove $%d, $%d\n", reg_v0, mips_to_reg(i->src1, reg_v1));
+                                }
+                            }
                             else
                                 mips_to_reg(i->src1, reg_v0);
                         }
@@ -414,7 +464,12 @@ void mips_generate() {
                         assert(i->src1->kind == VAR ||
                                 i->src1->kind == IMMF);
                         int rd = i->dest->reg;
-                        if (rd == -1) rd = reg_v0;
+                        if (rd < 0) rd = reg_v0;
+                        else 
+                        {
+                            assert(rd);
+                            used_reg[rd] = 1;
+                        }
                         if (i->src1->kind == IMMF)
                             printf("\tla $%d, %s\n", rd, i->src1->info.str);
                         else
@@ -459,7 +514,12 @@ void mips_generate() {
             {
                 int rs, rt;
                 int rd = i->dest->reg;
-                if (rd == -1) rd = reg_v0;
+                if (rd < 0) rd = reg_v0;
+                else 
+                {
+                    used_reg[rd] = 1;
+                    assert(rd);
+                }
                 if (swap)
                 {
                     COpr_t t;
@@ -499,7 +559,12 @@ void mips_generate() {
             {
                 int rs = mips_to_reg(i->src1, reg_v0);
                 int rd = i->dest->reg;
-                if (rd == -1) rd = reg_v0;
+                if (rd < 0) rd = reg_v0;
+                else 
+                {
+                    used_reg[rd] = 1;
+                    assert(rd);
+                }
                 printf("\tnegu $%d, $%d\n", rd, rs);
                 if (i->dest->reg == -1 || i->dest->kind == VAR)
                     mips_store(rd, i->dest);

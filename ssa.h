@@ -143,8 +143,11 @@ typedef struct CInterv {
 void ssa_generate(void);
 COpr_t cinterv_repr(COpr_t opr);
 void cinst_print(FILE *stream, CInst_t inst);
+int overlap_with_beg(COpr_t i, int beg);
 extern int gbbase;
 extern CBlock_t entry;
 extern COList_t defs;
 extern CType_t func;
+extern const int avail_regs[];
+extern const int MAX_AVAIL_REGS;
 #endif

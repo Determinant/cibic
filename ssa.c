@@ -1377,13 +1377,13 @@ CBList_t df[MAX_BLOCK];
 void dfs(CBlock_t u, int v) {
     CEdge *e;
     par[u->id] = v;
-    vis[u->id] = 0;
+    vis[u->id] = -2;
     for (e = cfg.head[u->id]; e; e = e->next)
     {
         CBlock_t v = e->to;
         if (vis[v->id] == -1)
             dfs(v, u->id);
-        else if (vis[v->id] == 0)
+        else if (vis[v->id] == -2)
             loop_tail[v->id] = u->id;
     }
     vis[u->id] = ocnt;
@@ -1676,7 +1676,10 @@ CRange_t crange_merge(CRange_t a, CRange_t b) {
         if (a && (!b || (a->l < b->l || (a->l == b->l && a->r < b->r))))
         {
             if (tail->r >= a->l)
-                tail->r = a->r;
+            {
+                if (a->r > tail->r)
+                    tail->r = a->r;
+            }
             else
             {
                 assert(tail->r < a->l);
@@ -1688,7 +1691,10 @@ CRange_t crange_merge(CRange_t a, CRange_t b) {
         else
         {
             if (tail->r >= b->l)
-                tail->r = b->r;
+            {
+                if (b->r > tail->r)
+                    tail->r = b->r;
+            }
             else
             {
                 assert(tail->r < b->l);
@@ -1851,10 +1857,13 @@ void build_intervals() {
             for (p = live[id]; p; p = p->next) 
                 if (cpset_belongs(curlive, (long)p->opr))
                 {
+                    /*
                     int j;
                     for (j = loop_tail[id]; j != id; j = par[j])
                         add_range_(p->opr, blks[j]->first, blks[j]->last + 1);
                     add_range_(p->opr, b->first, b->last + 1);
+                    */
+                    add_range_(p->opr, b->first, blks[loop_tail[id]]->last + 1);
                 }
         }
     }
@@ -1943,9 +1952,6 @@ void print_intervals() {
     }
 }
 
-#define MAX_AVAIL_REGS 10
-const int avail_regs[MAX_AVAIL_REGS] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
-
 void colist_remove(COList_t node) {
     node->prev->next = node->next;
     node->next->prev = node->prev;
@@ -1958,7 +1964,7 @@ void colist_add(COList_t head, COList_t p) {
 
 int overlap_with_beg(COpr_t i, int beg) {
     CRange_t r;
-    for (r = i->range; r->l <= beg; r = r->next)
+    for (r = i->range; r && r->l <= beg; r = r->next)
         if (r->r > beg) return 1;
     return 0;
 }
@@ -1977,6 +1983,9 @@ int overlap_with_interv(COpr_t i, COpr_t cur) {
 int copr_comp(const void *a, const void *b) {
     return (*(COpr_t *)a)->range->l - (*(COpr_t *)b)->range->l;
 }
+
+const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
+const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
 
 void register_alloc() {
     static int freg[32], f[32];
@@ -2090,7 +2099,7 @@ void register_alloc() {
                     w[p->opr->reg] += p->opr->info.var->weight;
             for (t = 0; t < 32; t++)
                 if (f[t] != -1 && w[t] < min) min = t, reg = t;
-            if (cur->info.var->weight < w[reg])
+            if (reg == -1 || cur->info.var->weight < w[reg])
             {
                 cur->reg = -1;      /* assign a memory location to cur */
                 free(c);            /* and move cur to handled */
@@ -2140,11 +2149,9 @@ void register_alloc() {
     for (p = raw_defs; p; p = p->next)
     {
         COpr_t opr = p->opr;
+        opr->spill = cinterv_repr(opr);
         if (cinterv_repr(opr)->range)
-        {
-            opr->spill = cinterv_repr(opr);
             opr->reg = opr->spill->reg;
-        }
     }
     defs = NULL;
     for (i = 0; i < dn; i++)
