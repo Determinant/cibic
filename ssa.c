@@ -1912,6 +1912,7 @@ void init_def(void) {
         opr->spill = cinterv_repr(opr);
     }
     /* coalescing */
+    /*
     for (p = entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
@@ -1919,6 +1920,7 @@ void init_def(void) {
             if (i->op == MOVE && i->dest->kind == TMP && i->src1->kind == TMP)
                 cinterv_union(i->dest, i->src1);
     }
+    */
 }
 
 void print_intervals(void) {
@@ -2429,7 +2431,7 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
         }
         else if (i->op == CALL)
         {
-            /* cexpmap_clear(cem); */
+            cexpmap_clear(cem);
             continue;
         }
         copr_shortcut(&i->src1);
@@ -2456,6 +2458,7 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
             }
         }
     }
+    cexpmap_clear(cem);
     for (e = dtree.head[b->id]; e; e = e->next)
         subexp_elimination_(e->to, cem);
 }
@@ -2568,7 +2571,7 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
-/*    subexp_elimination(); */
+    subexp_elimination();
     strength_reduction();
     deadcode_elimination();
     /* out of SSA */
