@@ -14,13 +14,16 @@ static int used_reg[32];
 void mips_prologue(void) {
     CVList_t v;
     CSList_t s;
+    int prev = 0;
     printf(".data 0x10000000\n");
     for (v = gvars; v; v = v->next)
     {
         CVar_t var = v->var;
         printf("\t.align 2\n");
         printf("_%s:\n", var->name);
-        var->start = -1;
+        prev += align_shift(prev);
+        var->start = prev;
+        prev += calc_size(var->type);
         if (var->initr)
         {
             CNode *initr = var->initr->chd;
@@ -65,6 +68,24 @@ void mips_prologue(void) {
     printf(".text\n");
 }
 
+#define IN_IMM(x) (-0x8000 <= (x) && (x) < 0x8000)
+
+void mips_global_addr(int reg, CVar_t var) {
+    int offset = var->start - 0x8000;
+    if (IN_IMM(offset))
+        printf("\taddiu $%d, $gp, %d\n", reg, offset);
+    else
+        printf("\tla $%d, _%s\n", reg, var->name);
+}
+
+void mips_global(const char *l, int reg, CVar_t var) {
+    int offset = var->start - 0x8000;
+    if (IN_IMM(offset))
+        printf("\t%s $%d, %d($gp)\n", l, reg, offset);
+    else
+        printf("\t%s $%d, _%s\n", l, reg, var->name);
+}
+
 void mips_load(int reg, COpr_t opr) {
     CVar_t var = opr->spill->info.var;
     CType_t type = opr->type;
@@ -74,7 +95,7 @@ void mips_load(int reg, COpr_t opr) {
         type->type == CARR))
     {
         if (var->loc > 0)
-            printf("\tla $%d, _%s\n", reg, var->name);
+            mips_global_addr(reg, var);
         else
             printf("\taddiu $%d, $sp, %d\n", reg, var->start);
     }
@@ -82,7 +103,7 @@ void mips_load(int reg, COpr_t opr) {
     {
         const char *l = type->type == CCHAR ? "lb" : "lw";
         if (var->loc > 0)
-            printf("\t%s $%d, _%s\n", l, reg, var->name);
+            mips_global(l, reg, var);
         else
             printf("\t%s $%d, %d($sp)\t#%s\n", l, reg, var->start, var->name);
     }
@@ -93,7 +114,7 @@ void mips_store(int reg, COpr_t opr) {
     CType_t type = opr->type;
     const char *l = type->type == CCHAR ? "sb" : "sw";
     if (var->loc > 0)
-        printf("\t%s $%d, _%s\n", l, reg, var->name);
+        mips_global(l, reg, var);
     else if (opr->reg == -1)
         printf("\t%s $%d, %d($sp)\t#%s\n", l, reg, var->start, var->name);
 }
@@ -270,8 +291,6 @@ void mips_func_end(void) {
     printf("\tjr $31\n");
 }
 
-#define IN_IMM(x) (-0x8000 <= (x) && (x) < 0x8000)
-
 void mips_generate(void) {
     CBlock_t p;
     CType_t rt = func->rec.func.ret;
@@ -356,7 +375,7 @@ void mips_generate(void) {
                         else
                         {
                             rt = mips_to_reg(i->src2, reg_v1);
-                            printf("\t%s$%d, $%d, _L%d\n", b, rs, rt, i->dest->info.imm);
+                            printf("\t%s $%d, $%d, _L%d\n", b, rs, rt, i->dest->info.imm);
                         }
                     }
                     break;
@@ -581,7 +600,7 @@ void mips_generate(void) {
                         {
                             CVar_t var = i->src1->spill->info.var;
                             if (var->loc > 0)
-                                printf("\tla $%d, _%s\n", rd, var->name);
+                                mips_global_addr(rd, var);
                             else
                                 printf("\taddiu $%d, $sp, %d\n", rd, var->start);
                             if (i->dest->reg == -1 || i->dest->kind == VAR)

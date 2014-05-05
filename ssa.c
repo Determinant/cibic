@@ -1972,7 +1972,10 @@ int copr_comp(const void *a, const void *b) {
     return (*(COpr_t *)a)->range->l - (*(COpr_t *)b)->range->l;
 }
 
-const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 25};
+const int avail_regs[] = {8, 9, 10, 11,
+                          12, 13, /*14, 15, */
+                          16, 17, 24, 25};
+
 const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
 
 void register_alloc(void) {
@@ -2274,6 +2277,7 @@ void strength_reduction(void) {
     } while (0)
 
     int i;
+    int call_cnt = 0;
     for (i = bcnt - 1; i >= 0; i--)
     {
         CBlock_t b = blks[vis[i]];
@@ -2304,7 +2308,18 @@ void strength_reduction(void) {
                         }
                     } 
                     break;
-
+                case PUSH:
+                    call_cnt++;
+                    break;
+                case CALL:
+                    if (i->src1->kind == IMMF &&
+                        call_cnt == 1 &&
+                        !strcmp(i->src1->info.str, "printf"))
+                    {
+                        i->src1->info.str = "__print_string";
+                    }
+                    call_cnt = 0;
+                    break;
                 default: ;
             }
         }
@@ -2401,52 +2416,53 @@ void copr_shortcut(COpr_t *opr) {
         *opr = t->same;
 }
 
-void subexp_elimination(void) {
-    int i;
-    CExpMap_t cem = cexpmap_create();
-    for (i = bcnt - 1; i >= 0; i--)
+void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
+    CInst_t i, ih = b->insts;
+    CEdge *e;
+    for (i = ih->next; i != ih; i = i->next)
     {
-        CBlock_t b = blks[vis[i]];
-        CInst_t i, ih = b->insts;
-        for (i = ih->next; i != ih; i = i->next)
+        CInst_t t;
+        if (i->op == MOVE)
         {
-            CInst_t t;
-            if (i->op == MOVE)
+            i->dest->same = i->src1->same;
+            continue;
+        }
+        else if (i->op == CALL)
+        {
+            /* cexpmap_clear(cem); */
+            continue;
+        }
+        copr_shortcut(&i->src1);
+        copr_shortcut(&i->src2);
+        t = cexpmap_lookup(cem, i);
+        if (t)
+        {
+            i->op = MOVE;
+            i->src1 = t->dest;
+            i->src2 = NULL;
+            i->dest->same = i->src1;
+        }
+        else
+        {
+            switch (i->op)
             {
-                i->dest->same = i->src1->same;
-                continue;
-            }
-            else if (i->op == CALL)
-            {
-                /* cexpmap_clear(cem); */
-                continue;
-            }
-            copr_shortcut(&i->src1);
-            copr_shortcut(&i->src2);
-            t = cexpmap_lookup(cem, i);
-            if (t)
-            {
-                i->op = MOVE;
-                i->src1 = t->dest;
-                i->src2 = NULL;
-                i->dest->same = i->src1;
-            }
-            else
-            {
-                switch (i->op)
-                {
-                    case MUL: case DIV: case MOD: case ADD: case SUB:
-                    case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
-                    case EQ: case NE: case LT: case GT: case LE: case GE:
-                    case NEG:
-                        cexpmap_insert(cem, i);
-                        break;
-                    default: ;
-                }
+                case MUL: case DIV: case MOD: case ADD: case SUB:
+                case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
+                case EQ: case NE: case LT: case GT: case LE: case GE:
+                case NEG:
+                    cexpmap_insert(cem, i);
+                    break;
+                default: ;
             }
         }
-        cexpmap_clear(cem);
     }
+    for (e = dtree.head[b->id]; e; e = e->next)
+        subexp_elimination_(e->to, cem);
+}
+
+void subexp_elimination(void) {
+    CExpMap_t cem = cexpmap_create();
+    subexp_elimination_(entry, cem);
     cexpmap_destroy(cem);
 }
 
