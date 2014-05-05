@@ -1906,6 +1906,19 @@ void init_def(void) {
                 cinterv_union(pi->dest, pi->oprs[i]);
         }
     }
+    for (def = raw_defs; def; def = def->next)
+    {
+        COpr_t opr = def->opr;
+        opr->spill = cinterv_repr(opr);
+    }
+    /* coalescing */
+    for (p = entry; p; p = p->next)
+    {
+        CInst_t i, ih = p->insts;
+        for (i = ih->next; i != ih; i = i->next)
+            if (i->op == MOVE && i->dest->kind == TMP && i->src1->kind == TMP)
+                cinterv_union(i->dest, i->src1);
+    }
 }
 
 void print_intervals(void) {
@@ -2139,9 +2152,9 @@ void register_alloc(void) {
     for (p = raw_defs; p; p = p->next)
     {
         COpr_t opr = p->opr;
-        opr->spill = cinterv_repr(opr);
+/*        opr->spill = cinterv_repr(opr); */
         if (cinterv_repr(opr)->range)
-            opr->reg = opr->spill->reg;
+            opr->reg = cinterv_repr(opr)->reg;
     }
     defs = NULL;
     for (i = 0; i < dn; i++)
@@ -2405,7 +2418,7 @@ void subexp_elimination(void) {
             }
             else if (i->op == CALL)
             {
-                cexpmap_clear(cem);
+                /* cexpmap_clear(cem); */
                 continue;
             }
             copr_shortcut(&i->src1);
@@ -2435,6 +2448,33 @@ void subexp_elimination(void) {
         cexpmap_clear(cem);
     }
     cexpmap_destroy(cem);
+}
+
+void deadcode_elimination() {
+    int i;
+    for (i = bcnt - 1; i >= 0; i--)
+    {
+        CBlock_t b = blks[vis[i]];
+        CInst_t i, ih = b->insts;
+        for (i = ih->next; i != ih; i = i->next)
+        {
+            if (i->src1) i->src1->dep = 1;
+            if (i->src2) i->src2->dep = 1;
+            if (i->op == WARR && i->dest) i->dest->dep = 1;
+        }
+    }
+    for (i = bcnt - 1; i >= 0; i--)
+    {
+        CBlock_t b = blks[vis[i]];
+        CInst_t i, ih = b->insts;
+        for (i = ih->next; i != ih; i = i->next)
+            if (i->op != CALL && i->dest && i->dest->kind == TMP && !i->dest->dep)
+            {
+                i->next->prev = i->prev;
+                i->prev->next = i->next;
+                free(i);
+            }
+    }
 }
 
 void ssa_func(CType_t func) {
@@ -2512,8 +2552,9 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
-    subexp_elimination();
+/*    subexp_elimination(); */
     strength_reduction();
+    deadcode_elimination();
     /* out of SSA */
     mark_insts();
     build_intervals();
