@@ -32,15 +32,16 @@ struct COpr {
 
     int sub;
     int dep;
-    int mod;
     int reg;        /* -1 for spilled, -2 for discarded */
     int begin, end; /* for reg allocation */
+    int mod;
     CType_t type;
     CInst_t def;
     CRange_t range;
     COpr_t par;     /* union-find */
     COpr_t cval;
     COpr_t spill;   /* check this reference if spilled */
+    COpr_t same;    /* for common exp elimination */
 };
 
 typedef struct COList COList;
@@ -67,7 +68,6 @@ struct CInst {
         ADDR,   /* get address */
         MUL, DIV, MOD, ADD, SUB,
         SHL, SHR, AND, XOR, OR, NOR,
-        LOR, LAND,
         EQ, NE, LT, GT, LE, GE,
         NEG
     } op;

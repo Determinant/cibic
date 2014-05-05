@@ -482,7 +482,7 @@ void mips_generate(void) {
                         {
                             COpr_t opr = p->opr;
                             if (opr->reg != -1 && 
-                                (opr->kind == TMP || opr->info.var->loc <= 0) &&
+                                (opr->kind == TMP || !(opr->info.var->loc > 0)) &&
                                 overlap_with_beg(opr, i->id))
                                 used_reg[opr->reg] = 1;
                         }

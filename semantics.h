@@ -48,6 +48,7 @@ struct CVar {
     CNode *initr;
     CBList_t defsite;
     int loc;
+    int reload;
     /* the following fields are used for renaming */
     int cnt;
     int weight;

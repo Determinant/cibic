@@ -273,6 +273,7 @@ CVar_t cvar_create(char *name, CType_t type, CNode *ast) {
     cv->defsite = NULL;
     cv->loc = 0;
     cv->weight = 0;
+    cv->reload = 0;
     return cv;
 }
 

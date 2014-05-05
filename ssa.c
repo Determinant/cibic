@@ -24,6 +24,7 @@ COpr_t copr_create(void) {
     COpr_t opr = NEW(COpr);
     opr->type = NULL;
     opr->cval = NULL;
+    opr->same = opr;
     opr->dep = 0;
     opr->mod = 0;
     opr->par = opr;
@@ -269,8 +270,6 @@ void cinst_print(FILE *f, CInst_t inst) {
                     case GT: op = ">"; break;
                     case LE: op = "<="; break;
                     case GE: op = ">="; break;
-                    case LOR: op = "||"; break;
-                    case LAND: op = "&&"; break;
                     case EQ: op = "=="; break;
                     case NE: op = "!="; break;
                     case NOR: op = "nor"; break;
@@ -1004,8 +1003,6 @@ COpr_t ssa_exp_(CNode *p, CBlock_t *cur, CInst_t lval, CBlock_t succ) {/*{{{*/
                             inst->src2 = rhs;
                             switch (op)
                             {
-                                case OPT_OR: inst->op = LOR; break;
-                                case OPT_AND: inst->op = LAND; break;
                                 case OPT_SHL: inst->op = SHL; break;
                                 case OPT_SHR: inst->op = SHR; break;
                                 case '|': inst->op = OR; break;
@@ -1651,7 +1648,7 @@ void renaming_vars(COList_t oprs) {
             CInst_t ld = cinst_create();
             CVar_t var = p->opr->info.var;
             var->cnt = 0;
-            p->opr->mod = var->loc > 0 && var->type->type != CARR;
+            var->reload = var->loc > 0 && var->type->type != CARR;
             ld->op = LOAD;
             ld->dest = copr_create();
             ld->dest->kind = VAR;
@@ -2158,6 +2155,7 @@ void register_alloc(void) {
 }
 
 void const_propagation(void) {
+#define IS_STATIC(opr) (!((opr)->mod || (opr)->info.var->reload))
     int i;
     for (i = bcnt - 1; i >= 0; i--)
     {
@@ -2169,13 +2167,13 @@ void const_propagation(void) {
             COpr_t t;
             if (i->op == ADDR)
                 i->src1->mod = 1;
-            if (i->src1 && i->src1->cval && !i->src1->mod)
+            if (i->src1 && i->src1->cval && IS_STATIC(i->src1))
             {
                 t = i->src1->cval;
                 i->src1 = copr_create();
                 *(i->src1) = *t;
             }
-            if (i->src2 && i->src2->cval && !i->src2->mod)
+            if (i->src2 && i->src2->cval && IS_STATIC(i->src2))
             {
                 t = i->src2->cval;
                 i->src2 = copr_create();
@@ -2215,8 +2213,6 @@ void const_propagation(void) {
                         case AND: immd = imm1 & imm2; break;
                         case XOR: immd = imm1 ^ imm2; break;
                         case OR: immd = imm1 | imm2; break;
-                        case LOR: immd = imm1 || imm2; break;
-                        case LAND: immd = imm1 && imm2; break;
                         case NOR: immd = ~(imm1 | imm2); break;
                         case EQ: immd = imm1 == imm2; break;
                         case NE: immd = imm1 != imm2; break;
@@ -2302,11 +2298,41 @@ void strength_reduction(void) {
     }
 }
 
+unsigned int copr_hash(COpr_t opr) {
+    if (!opr) return 0;
+    switch (opr->kind)
+    {
+        case VAR:
+        case TMP:
+            return (unsigned long)opr;
+        default:
+            return (unsigned int)opr->info.imm;
+    }
+}
+
+int copr_eq(COpr_t a, COpr_t b) {
+    if (a->kind != b->kind) return 0;
+    switch (a->kind)
+    {
+        case VAR:
+        case TMP:
+            return a == b;
+        case IMM:
+            return a->info.imm == b->info.imm;
+        case IMMS:
+            return a->info.cstr == b->info.cstr;
+        case IMMF:
+            return !strcmp(a->info.str, b->info.str);
+        default:
+            return 0;
+    }
+}
+
 unsigned int cexpmap_hash(CInst_t exp) {
     unsigned int res = 0;
     res = ((unsigned int)exp->op) << 10;
-    res ^= (unsigned long)exp->src1;
-    res = (res << 1) ^ (unsigned long)exp->src2;
+    res ^= copr_hash(exp->src1);
+    res = (res << 1) ^ copr_hash(exp->src2);
     return res;
 }
 
@@ -2318,8 +2344,8 @@ CExpMap_t cexpmap_create(void) {
 
 int cexpmap_comp(CInst_t exp1, CInst_t exp2) {
     if (exp1->op != exp2->op) return 0;
-    if (exp1->src1 != exp2->src1) return 0;
-    return exp1->src2 == exp2->src2;
+    if (!copr_eq(exp1->src1, exp2->src1)) return 0;
+    return copr_eq(exp1->src2, exp2->src2);
 }
 
 void cexpmap_insert(CExpMap_t cem, CInst_t exp) {
@@ -2327,7 +2353,7 @@ void cexpmap_insert(CExpMap_t cem, CInst_t exp) {
     CENode *np = NEW(CENode);
     np->exp = exp;
     np->next = cem->head[hv];
-    cem->head[hv] = np->next;
+    cem->head[hv] = np;
 }
 
 CInst_t cexpmap_lookup(CExpMap_t cem, CInst_t exp) {
@@ -2345,7 +2371,7 @@ void cexpmap_clear(CExpMap_t cem) {
     for (i = 0; i < MAX_TABLE_SIZE; cem->head[i++] = NULL)
         for (p = cem->head[i]; p; p = np)
         {
-            np = p;
+            np = p->next;
             free(p);
         }
 }
@@ -2354,6 +2380,11 @@ void cexpmap_destroy(CExpMap_t cem) {
     cexpmap_clear(cem);
     free(cem);
 }
+void copr_shortcut(COpr_t *opr) {
+    COpr_t t = *opr;
+    if (!t) return;
+    *opr = t->same;
+}
 
 void subexp_elimination(void) {
     int i;
@@ -2361,15 +2392,45 @@ void subexp_elimination(void) {
     for (i = bcnt - 1; i >= 0; i--)
     {
         CBlock_t b = blks[vis[i]];
-        CInst_t i, ni, ih = b->insts;
-        for (i = ih->next; i != ih; i = ni)
+        CInst_t i, ih = b->insts;
+        for (i = ih->next; i != ih; i = i->next)
         {
-            ni = i->next;
-            switch (i->op)
+            CInst_t t;
+            if (i->op == MOVE)
             {
-                default: ;
+                i->dest->same = i->src1->same;
+                continue;
+            }
+            else if (i->op == CALL)
+            {
+                cexpmap_clear(cem);
+                continue;
+            }
+            copr_shortcut(&i->src1);
+            copr_shortcut(&i->src2);
+            t = cexpmap_lookup(cem, i);
+            if (t)
+            {
+                i->op = MOVE;
+                i->src1 = t->dest;
+                i->src2 = NULL;
+                i->dest->same = i->src1;
+            }
+            else
+            {
+                switch (i->op)
+                {
+                    case MUL: case DIV: case MOD: case ADD: case SUB:
+                    case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
+                    case EQ: case NE: case LT: case GT: case LE: case GE:
+                    case NEG:
+                        cexpmap_insert(cem, i);
+                        break;
+                    default: ;
+                }
             }
         }
+        cexpmap_clear(cem);
     }
     cexpmap_destroy(cem);
 }
@@ -2449,7 +2510,7 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
-    subexp_elimination();
+/*    subexp_elimination(); */
     strength_reduction();
     /* out of SSA */
     mark_insts();
