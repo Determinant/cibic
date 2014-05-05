@@ -59,10 +59,28 @@ void mips_prologue(void) {
             printf("\t.space %d\n", calc_size(var->type));
     }
     printf("\t.align 2\n");
+    prev += align_shift(prev);
     for (s = cstrs; s; s = s->next)
     {
+        int len = 1;
+        char *p = s->str;
         printf("_str_%d:\n", s->id);
         printf("\t.asciiz \"%s\"\n", s->str);
+        s->start = prev;
+        for (; *p != '\0'; p++)
+        {
+            len++;
+            if (*p == '\\')
+            {
+                switch (*(++p))
+                {
+                    case '0': p += 3; break;
+                    case 'x': p += 2; break;
+                    default: ;
+                }
+            }
+        }
+        prev += len;
     }
     /* pre-calc done */
     printf(".text\n");
@@ -73,7 +91,7 @@ void mips_prologue(void) {
 void mips_global_addr(int reg, CVar_t var) {
     int offset = var->start - 0x8000;
     if (IN_IMM(offset))
-        printf("\taddiu $%d, $gp, %d\n", reg, offset);
+        printf("\taddiu $%d, $gp, %d #%s\n", reg, offset, var->name);
     else
         printf("\tla $%d, _%s\n", reg, var->name);
 }
@@ -81,7 +99,7 @@ void mips_global_addr(int reg, CVar_t var) {
 void mips_global(const char *l, int reg, CVar_t var) {
     int offset = var->start - 0x8000;
     if (IN_IMM(offset))
-        printf("\t%s $%d, %d($gp)\n", l, reg, offset);
+        printf("\t%s $%d, %d($gp) #%s\n", l, reg, offset, var->name);
     else
         printf("\t%s $%d, _%s\n", l, reg, var->name);
 }
@@ -127,7 +145,12 @@ int mips_to_reg(COpr_t opr, int reg0) {
     }
     else if (opr->kind == IMMS)
     {
-        printf("\tla $%d, _str_%d\n", reg0, opr->info.cstr->id);
+        CSList_t cstr = opr->info.cstr;
+        int offset = cstr->start - 0x8000;
+        if (IN_IMM(offset))
+            printf("\taddiu $%d, $gp, %d # _str_%d\n", reg0, offset, cstr->id);
+        else
+            printf("\tla $%d, _str_%d\n", reg0, cstr->id);
         return reg0;
     }
     else if (opr->kind == IMMF)

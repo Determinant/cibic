@@ -32,6 +32,7 @@ typedef CSList *CSList_t;
 struct CSList {
     char *str;
     int id;
+    int start;
     CSList_t next;
 };
 
