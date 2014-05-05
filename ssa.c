@@ -1959,7 +1959,7 @@ int copr_comp(const void *a, const void *b) {
     return (*(COpr_t *)a)->range->l - (*(COpr_t *)b)->range->l;
 }
 
-const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 24, 25};
+const int avail_regs[] = {8, 9, 10, 11, 12, 13, 14, 15, 16, 24, 25};
 const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
 
 void register_alloc(void) {
@@ -2383,7 +2383,9 @@ void cexpmap_destroy(CExpMap_t cem) {
 void copr_shortcut(COpr_t *opr) {
     COpr_t t = *opr;
     if (!t) return;
-    *opr = t->same;
+    t = t->same;
+    if (t->kind == TMP)
+        *opr = t->same;
 }
 
 void subexp_elimination(void) {
@@ -2510,7 +2512,7 @@ void ssa_func(CType_t func) {
     renaming_vars(oprs);
     /* optimization on SSA */
     const_propagation();
-/*    subexp_elimination(); */
+    subexp_elimination();
     strength_reduction();
     /* out of SSA */
     mark_insts();

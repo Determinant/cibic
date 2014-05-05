@@ -68,9 +68,10 @@ void mips_prologue(void) {
 void mips_load(int reg, COpr_t opr) {
     CVar_t var = opr->spill->info.var;
     CType_t type = opr->type;
-    if (type->type == CSTRUCT ||
+    if (opr->kind == VAR &&
+        (type->type == CSTRUCT ||
         type->type == CUNION ||
-        type->type == CARR)
+        type->type == CARR))
     {
         if (var->loc > 0)
             printf("\tla $%d, _%s\n", reg, var->name);
@@ -214,7 +215,7 @@ void mips_space_alloc(void) {
         int i;
         for (i = 0; i < MAX_AVAIL_REGS; i++)
             save_pos[avail_regs[i]] = prev + i * INT_SIZE;
-        save_pos[30] = save_size;
+        save_pos[30] = prev + save_size;
         save_size += INT_SIZE;
     }
     prev += save_size;
