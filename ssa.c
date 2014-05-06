@@ -152,7 +152,7 @@ void cfg_add_edge(CBlock_t from, CBlock_t to) {
 }
 
 void dtree_add_edge(CBlock_t from, CBlock_t to) {
-/*    printf("%d d-> %d\n", from->id, to->id); */
+    fprintf(stderr, "%d d-> %d\n", from->id, to->id);
     int id = from->id;
     CEdge *e = NEW(CEdge);
     e->to = to;

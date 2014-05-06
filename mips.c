@@ -519,6 +519,14 @@ void mips_generate(void) {
                         int rd = i->dest->reg;
                         int j;
                         memset(used_reg, 0, sizeof used_reg);
+                        /* NOTE: bad hack */
+                        if (i->src1->kind == IMMF && !strcmp(i->src1->info.str, "__print_string"))
+                        {
+                            printf( "\tlw $a0, 0($sp)\n"
+                                    "\tli $2, 4\n"
+                                    "\tsyscall\n");
+                            break;
+                        }
                         if (rt->type == CSTRUCT || rt->type == CUNION)
                             used_reg[30] = 1; /* save $fp */
                         for (p = defs; p; p = p->next)
