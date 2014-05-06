@@ -124,6 +124,7 @@ int main(int argc, char **argv) {
             case 's': mode = PRINT_SSA; break;
             case 'm': mode = PRINT_SEM; break;
             case 'h': print_help(); return 0;
+            default: print_help(); return 0;
         }
     }
     if (optind == argc - 1)
