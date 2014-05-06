@@ -1912,15 +1912,14 @@ void init_def(void) {
         opr->spill = cinterv_repr(opr);
     }
     /* coalescing */
-    /*
     for (p = entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
         for (i = ih->next; i != ih; i = i->next)
-            if (i->op == MOVE && i->dest->kind == TMP && i->src1->kind == TMP)
+            if (i->op == MOVE && i->dest->kind == TMP &&
+                    (i->src1->kind == TMP || i->src1->kind == VAR))
                 cinterv_union(i->dest, i->src1);
     }
-    */
 }
 
 void print_intervals(void) {
@@ -2452,19 +2451,22 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
                 case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
                 case EQ: case NE: case LT: case GT: case LE: case GE:
                 case NEG:
-                    cexpmap_insert(cem, i);
+                    if (i->dest->kind == TMP) cexpmap_insert(cem, i);
                     break;
                 default: ;
             }
         }
     }
-    cexpmap_clear(cem);
     for (e = dtree.head[b->id]; e; e = e->next)
         subexp_elimination_(e->to, cem);
+    cexpmap_clear(cem);
 }
 
 void subexp_elimination(void) {
     CExpMap_t cem = cexpmap_create();
+/*    int i;
+    for (i = bcnt - 1; i >= 0; i--)
+    */
     subexp_elimination_(entry, cem);
     cexpmap_destroy(cem);
 }

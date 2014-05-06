@@ -64,14 +64,12 @@ __L10:
 # if not (t14) goto __L12
 	bne $10, 0, __L12
 # len_11 = 1
-	li $2, 1
-	move $11 $2
+	li $11, 1
 # goto __L15
 	j __L15
 __L12:
 # len_8 = 0
-	li $2, 0
-	move $11 $2
+	li $11, 0
 # goto __L14
 	j __L14
 __L13:
