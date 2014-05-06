@@ -1,7 +1,7 @@
 #! /bin/bash
-cp cibic testbed/
-cp lib.s testbed/
-cd testbed/
+cp cibic compile_data/
+cp lib.s compile_data/
+cd compile_data/
 for f in *.c
 do
     echo $f

@@ -1,5 +1,5 @@
 #! /bin/bash
-dir=testcases/*.c
+dir=semantics_data/*.c
 if [ "$#" != 0 ]; then
     dir=$1
 fi
