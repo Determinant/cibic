@@ -14,16 +14,18 @@ static COList_t raw_defs;   /* defintion of all vars and tmps */
 static int bcnt;            /* block counter */
 static int tcnt;            /* temporary counter */
 
+static int gbbase;
+static CBlock_t entry;
+static COList_t defs;       /* all defintions that have actual effects */
+
 /* for code generation */
-int gbbase;
-CBlock_t entry;
-CType_t func;
-COList_t defs;              /* all defintions that have actual effects */
+CFuncIR_t func_ir;
 
 COpr_t copr_create(void) {
     COpr_t opr = NEW(COpr);
     opr->type = NULL;
     opr->cval = NULL;
+    opr->range = NULL;
     opr->same = opr;
     opr->dep = 0;
     opr->mod = 0;
@@ -322,16 +324,26 @@ void ssa_func_print(CBlock_t p) {
 void ssa_func(CType_t);
 void ssa_generate(void) {
     CTList_t f;
-    mips_prologue();
+    CFuncIR_t cf, cf_list = NULL;
     for (f = funcs; f; f = f->next)
     {
-        func = f->type;
-        fprintf(stderr, "%s:\n", func->name);
-        ssa_func(func);
+        cf = NEW(CFuncIR);
+        ssa_func(cf->func = f->type);
+        cf->gbbase = gbbase;
+        cf->defs = defs;
+        cf->entry = entry;
+        cf->next = cf_list;
+        cf_list = cf;
+        fprintf(stderr, "%s:\n", cf->func->name);
         ssa_func_print(entry);
-        mips_generate();
         gbbase += bcnt;
         bcnt = 0;
+    }
+    mips_prologue();
+    for (cf = cf_list; cf; cf = cf->next)
+    {
+        func_ir = cf;
+        mips_generate();
     }
 }
 
@@ -1597,7 +1609,6 @@ void renaming_dfs(CBlock_t blk) {
         COList_t n = NEW(COList), n2;
         dest->sub = var->cnt++;
         dest->def = ih->next; /* the first inst */ 
-        dest->range = NULL;
         n->opr = dest;
         n->next = var->stack;
         var->stack = n;
@@ -1635,7 +1646,6 @@ void renaming_dfs(CBlock_t blk) {
                     COList_t n = NEW(COList), n2;
                     dest->sub = var->cnt++;
                     dest->def = i;
-                    dest->range = NULL;
                     n->opr = dest;
                     n->next = var->stack;
                     var->stack = n;
@@ -2311,6 +2321,37 @@ void strength_reduction(void) {
         } \
     } while (0)
 
+#define PRINT_BARE_STRING \
+    do { \
+        if (bp != buff) \
+        { \
+            CInst_t print = cinst_create(); \
+            print->op = CALL; \
+            print->dest = copr_create(); \
+            print->dest->kind = TMP; \
+            print->dest->info.var = ctmp_create(); \
+            print->dest->type = i->dest->type; \
+            print->src1 = copr_create(); \
+            print->src1->kind = IMMF; \
+            CSList_t cstr = NEW(CSList); \
+            *bp = '\0'; \
+            print->src1->kind = IMMF; \
+            cstr->str = strdup(buff);  \
+            (cstr->prev = cstrs->prev)->next = cstr; \
+            (cstr->next = cstrs)->prev = cstr; \
+            cstr->id = cstr->prev->id + 1; \
+            inst = cinst_create(); \
+            inst->op = PUSH; \
+            inst->src1 = copr_create(); \
+            inst->src1->kind = IMMS; \
+            inst->src1->info.cstr = cstr; \
+            cblock_append(ibuff, inst); \
+            print->src1->info.str = "__print_string"; \
+            cblock_append(ibuff, print); \
+            bp = buff; \
+        } \
+    } while (0)
+
     int i;
     int call_cnt = 0;
     for (i = bcnt - 1; i >= 0; i--)
@@ -2365,11 +2406,121 @@ void strength_reduction(void) {
                     call_cnt++;
                     break;
                 case CALL:
+                    /*
                     if (i->src1->kind == IMMF &&
                         call_cnt == 1 &&
                         !strcmp(i->src1->info.str, "printf"))
                     {
                         i->src1->info.str = "__print_string";
+                    }
+                    */
+                    if (i->src1->kind == IMMF &&
+                        !strcmp(i->src1->info.str, "printf"))
+                    {
+                        static char buff[1024];
+                        char *bp = buff, *sp;
+                        CInst_t push = i, inst,  phead, np;
+                        CBlock_t ibuff;
+                        CSList_t fmt;
+                        /* move to the first push */
+                        while (call_cnt--) push = push->prev;
+                        if (push->src1->kind != IMMS) break; /* not a const pattern */
+                        ibuff = cblock_create(0);
+                        fmt = push->src1->info.cstr;
+                        push->prev->next = i->next;
+                        i->next->prev = push->prev;
+                        phead = push->prev;
+                        np = push->next;
+                        free(push);
+                        push = np;
+                        for (sp = fmt->str; *sp != '\0'; sp++)
+                        {
+                            if (*sp == '%')
+                            {
+                                CInst_t print = cinst_create();
+                                print->op = CALL;
+                                print->dest = copr_create();
+                                print->dest->kind = TMP;
+                                print->dest->info.var = ctmp_create();
+                                print->dest->type = i->dest->type;
+                                print->src1 = copr_create();
+                                print->src1->kind = IMMF;
+
+
+                                PRINT_BARE_STRING;
+                                switch (*(++sp))
+                                {
+                                    case 'd': 
+                                        {
+                                            if (push != i)
+                                            {
+                                                np = push->next;
+                                                cblock_append(ibuff, push);
+                                                push = np;
+                                            }
+                                            print->src1->info.str = "__print_int";
+                                            cblock_append(ibuff, print);
+                                        }
+                                        break;
+                                    case 'c':
+                                        {
+                                            if (push != i)
+                                            {
+                                                np = push->next;
+                                                cblock_append(ibuff, push);
+                                                push = np;
+                                            }
+                                            print->src1->info.str = "__print_char";
+                                            cblock_append(ibuff, print);
+                                        }
+                                        break;
+                                    case 's':
+                                        {
+
+                                            if (push != i)
+                                            {
+                                                np = push->next;
+                                                cblock_append(ibuff, push);
+                                                push = np;
+                                            }
+                                            print->src1->info.str = "__print_string";
+                                            cblock_append(ibuff, print);
+                                        }
+                                        break;
+                                    default:
+                                        {
+                                            CSList_t cstr = NEW(CSList);
+                                            cstr->str = strdup(sp - 1); 
+                                            (cstr->prev = cstrs->prev)->next = cstr;
+                                            (cstr->next = cstrs)->prev = cstr;
+                                            cstr->id = cstr->prev->id + 1;
+                                            inst = cinst_create();
+                                            inst->op = PUSH;
+                                            inst->src1 = copr_create();
+                                            inst->src1->kind = IMMS;
+                                            inst->src1->info.cstr = cstr;
+                                            cblock_append(ibuff, inst);
+                                            for (; push != i; push = np)
+                                            {
+                                                np = push->next;
+                                                cblock_append(ibuff, push);
+                                            }
+                                            print->src1->info.str = "printf";
+                                            cblock_append(ibuff, print);
+                                            sp = fmt->str + strlen(fmt->str) - 1;
+                                        }
+                                        break;
+                                }
+                            }
+                            else *bp++ = *sp;
+                        }
+                        PRINT_BARE_STRING;
+                        fmt->prev->next = fmt->next;
+                        fmt->next->prev = fmt->prev;
+                        free(fmt);
+                        (i->next->prev = ibuff->insts->prev)->next = i->next;
+                        (phead->next = ibuff->insts->next)->prev = phead;
+                        free(ibuff);
                     }
                     call_cnt = 0;
                     break;
@@ -2516,7 +2667,6 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
                         (t->prev = i)->next = t;
                         t->dest->def = t;
                         t->dest->type = i->dest->type;
-                        t->dest->range = NULL;
                         cexpmap_insert(cem, t);
                     }
                     else 

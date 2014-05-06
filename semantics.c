@@ -63,7 +63,6 @@ static CType_t builtin_memcpy;
 static CType_t builtin_print_int;
 static CType_t builtin_print_char;
 static CType_t builtin_print_string;
-static int scnt = 0;
 
 CTList_t funcs;
 CVList_t gvars;
@@ -1253,9 +1252,10 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 CSList_t cstr = NEW(CSList);
 
                 cstr->str = p->rec.strval;
-                cstr->next = cstrs;
-                cstr->id = scnt++;
-                cstrs = cstr;
+                (cstr->prev = cstrs->prev)->next = cstr;
+                (cstr->next = cstrs)->prev = cstr;
+                cstr->id = cstr->prev->id + 1;
+                /* cstrs = cstr; */
 
                 type->rec.ref = basic_type_char;
                 res.type = type;
@@ -1885,7 +1885,9 @@ void semantics_check(CNode *p) {
     cscope_push_type(scope, builtin_print_char, NS_ID);
     cscope_push_type(scope, builtin_print_string, NS_ID);
     /* const string counter */
-    scnt = 0;
+    cstrs = NEW(CSList);
+    cstrs->id = -1;
+    cstrs->prev = cstrs->next = cstrs;
     /* check all definitions and declarations */
     for (p = p->chd; p; p = p->next)
     {

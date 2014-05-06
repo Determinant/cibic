@@ -10,6 +10,7 @@ int reg_v1 = 3;
 int memcpy_cnt;
 static int save_pos[32];
 static int used_reg[32]; 
+static CType_t func;
 
 void mips_prologue(void) {
     CVList_t v;
@@ -60,7 +61,7 @@ void mips_prologue(void) {
     }
     printf("\t.align 2\n");
     prev += align_shift(prev);
-    for (s = cstrs; s; s = s->next)
+    for (s = cstrs->next; s != cstrs; s = s->next)
     {
         int len = 1;
         char *p = s->str;
@@ -190,7 +191,7 @@ void mips_space_alloc(void) {
     CBlock_t p;
     COList_t d;
     CVar_t v;
-    for (d = defs; d; d = d->next)
+    for (d = func_ir->defs; d; d = d->next)
     {
         COpr_t opr = d->opr;
         assert(opr->par == opr);
@@ -207,7 +208,7 @@ void mips_space_alloc(void) {
                 tmp_size += calc_size(opr->type);
         }
     }
-    for (p = entry; p; p = p->next)
+    for (p = func_ir->entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
         for (i = ih->next; i != ih; i = i->next)
@@ -264,7 +265,7 @@ void mips_space_alloc(void) {
     }
     prev += save_size;
     /* adjust offset for spilled temporaries */
-    for (d = defs; d; d = d->next)
+    for (d = func_ir->defs; d; d = d->next)
     {
         COpr_t opr = d->opr;
         assert(opr->par == opr);
@@ -273,7 +274,7 @@ void mips_space_alloc(void) {
     }
     prev += tmp_size;
     prev += align_shift(prev);
-    for (p = entry; p; p = p->next)
+    for (p = func_ir->entry; p; p = p->next)
     {
         CInst_t i, ih = p->insts;
         for (i = ih->next; i != ih; i = i->next)
@@ -316,7 +317,9 @@ void mips_func_end(void) {
 
 void mips_generate(void) {
     CBlock_t p;
-    CType_t rt = func->rec.func.ret;
+    CType_t rt;
+    func = func_ir->func;
+    rt = func->rec.func.ret;
     /* int arg_cnt = 0; */
     mips_space_alloc();
     if (strcmp(func->name, "main"))
@@ -324,9 +327,9 @@ void mips_generate(void) {
     else
         printf("main:\n");
     mips_func_begin();
-    for (p = entry; p; p = p->next)
+    for (p = func_ir->entry; p; p = p->next)
     {
-        if (p->ref) printf("_L%d:\n", p->id + gbbase);
+        if (p->ref) printf("_L%d:\n", p->id + func_ir->gbbase);
         CInst_t i, ih = p->insts;
         const char *bop;
         for (i = ih->next; i != ih; i = i->next)
@@ -520,16 +523,24 @@ void mips_generate(void) {
                         int j;
                         memset(used_reg, 0, sizeof used_reg);
                         /* NOTE: bad hack */
-                        if (i->src1->kind == IMMF && !strcmp(i->src1->info.str, "__print_string"))
+                        if (i->src1->kind == IMMF)
                         {
-                            printf( "\tlw $a0, 0($sp)\n"
-                                    "\tli $2, 4\n"
-                                    "\tsyscall\n");
-                            break;
+                            char *fname = i->src1->info.str;
+                            int flag = 0;
+                            if (!strcmp(fname, "__print_int")) flag = 1;
+                            else if (!strcmp(fname, "__print_char")) flag = 11;
+                            else if (!strcmp(fname, "__print_string")) flag = 4;
+                            if (flag)
+                            {
+                                printf( "\tlw $a0, 0($sp)\n"
+                                        "\tli $2, %d\n"
+                                        "\tsyscall\n", flag);
+                                break;
+                            }
                         }
                         if (rt->type == CSTRUCT || rt->type == CUNION)
                             used_reg[30] = 1; /* save $fp */
-                        for (p = defs; p; p = p->next)
+                        for (p = func_ir->defs; p; p = p->next)
                         {
                             COpr_t opr = p->opr;
                             if (opr->reg != -1 && 
@@ -556,7 +567,7 @@ void mips_generate(void) {
                         for (j = 0; j < 32; j++)
                             if (used_reg[j])
                                 printf("\tlw $%d, %d($sp) # load reg\n", j, save_pos[j]);
-                        for (p = defs; p; p = p->next)
+                        for (p = func_ir->defs; p; p = p->next)
                         {
                             COpr_t opr = p->opr;
                             if (opr->reg != -1 &&

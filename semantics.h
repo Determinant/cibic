@@ -33,7 +33,7 @@ struct CSList {
     char *str;
     int id;
     int start;
-    CSList_t next;
+    CSList_t prev, next;
 };
 
 typedef struct CBList *CBList_t;
@@ -203,6 +203,7 @@ void def_exit(void);
 int calc_size(CType_t type);
 int align_shift(int x);
 
+extern int scnt;
 extern CTList_t funcs;
 extern CVList_t gvars;
 extern CSList_t cstrs;
