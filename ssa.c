@@ -2008,7 +2008,7 @@ int copr_comp(const void *a, const void *b) {
 }
 
 const int avail_regs[] = {8, 9, 10, 11,
-                          12, 13, /*14, 15, */
+                          12, 13, 14, 15,
                           16, 17, 24, 25};
 
 const int MAX_AVAIL_REGS = sizeof(avail_regs) / sizeof(avail_regs[0]);
