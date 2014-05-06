@@ -35,4 +35,5 @@ enum {
 #define PTR_SIZE        4
 #define FLAG_FUNC_CHK        (1 << 0)
 #define FLAG_FUNC_DEF        (1 << 1)
+
 #endif

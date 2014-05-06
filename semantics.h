@@ -1,5 +1,6 @@
 #ifndef SEMANTICS_H
 #define SEMANTICS_H
+#include <stdint.h>
 #include "const.h"
 
 typedef struct CNode CNode;
@@ -196,16 +197,16 @@ enum DefState{
 typedef struct CPNode CPNode;
 typedef struct CPSet {
     struct CPNode {
-        long key;
+        uintptr_t key;
         CPNode *next;
     } *head[MAX_TABLE_SIZE];
 } CPSet;
 typedef CPSet *CPSet_t;
 
 CPSet_t cpset_create(void);
-int cpset_insert(CPSet_t cps, long key);
-int cpset_belongs(CPSet_t cps, long key);
-void cpset_erase(CPSet_t cps, long key);
+int cpset_insert(CPSet_t cps, uintptr_t key);
+int cpset_belongs(CPSet_t cps, uintptr_t key);
+void cpset_erase(CPSet_t cps, uintptr_t key);
 void cpset_destroy(CPSet_t cps);
 
 int is_identifier(const char *name);

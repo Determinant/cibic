@@ -1256,7 +1256,7 @@ ExpType semantics_exp(CNode *p, CScope_t scope) {
                 res.type = type;
                 res.lval = 0;
                 p->ext.is_const = 1;
-                p->ext.const_val = (long)cstr;
+                p->ext.const_val = (uintptr_t)cstr;
             }
             break;
         case EXP:
@@ -1773,12 +1773,12 @@ void ctype_print_(CType_t ct, int lvl, CPSet_t visited) {
                 fprintf(stderr, "[%s@%lx:{name:%s}",
                         ct->type == CSTRUCT ? "struct" : "union",
                         (size_t)ct, ct->name);
-                if (cpset_belongs(visited, (long)ct))
+                if (cpset_belongs(visited, (uintptr_t)ct))
                 {
                     fprintf(stderr, "]\n");
                     return;
                 }
-                cpset_insert(visited, (long)ct);
+                cpset_insert(visited, (uintptr_t)ct);
                 fprintf(stderr, "{size:%d}", ct->size);
                 fprintf(stderr, "{fields:");
                 if (f)
@@ -2009,7 +2009,7 @@ void cpset_destroy(CPSet_t cps) {
     free(cps);
 }
 
-int cpset_insert(CPSet_t cps, long key) {
+int cpset_insert(CPSet_t cps, uintptr_t key) {
     unsigned int hv = key % MAX_TABLE_SIZE;
     CPNode *p = cps->head[hv], *np;
     for (; p; p = p->next)
@@ -2022,7 +2022,7 @@ int cpset_insert(CPSet_t cps, long key) {
     return 1;
 }
 
-void cpset_erase(CPSet_t cps, long key) {
+void cpset_erase(CPSet_t cps, uintptr_t key) {
     unsigned int hv = key % MAX_TABLE_SIZE;
     int flag = 0;
     CPNode *p = cps->head[hv], *pp = NULL;
@@ -2040,7 +2040,7 @@ void cpset_erase(CPSet_t cps, long key) {
     free(p);
 }
 
-int cpset_belongs(CPSet_t cps, long key) {
+int cpset_belongs(CPSet_t cps, uintptr_t key) {
     unsigned int hv = key % MAX_TABLE_SIZE;
     CPNode *p = cps->head[hv];
     for (; p; p = p->next)

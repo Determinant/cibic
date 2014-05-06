@@ -1502,7 +1502,7 @@ void insert_phi(CVList_t vars) {
             {
                 CBlock_t y = i->cblk;
                 CPSet_t phiy = phi[y->id];
-                if (!cpset_belongs(phiy, (long)var))
+                if (!cpset_belongs(phiy, (uintptr_t)var))
                 {
                     CPhi_t phi = NEW(CPhi);
                     CBList_t ndef;
@@ -1512,7 +1512,7 @@ void insert_phi(CVList_t vars) {
                     phi->dest->type = var->type;
                     phi->oprs = (COpr_t *)malloc(sizeof(COpr_t) * y->pred);
                     cblock_pappend(y, phi); 
-                    cpset_insert(phiy, (long)var);
+                    cpset_insert(phiy, (uintptr_t)var);
                     ndef = NEW(CBList);
                     ndef->cblk = y;
                     ndef->next = def;
@@ -1757,18 +1757,18 @@ void build_intervals(void) {
                 COpr_t opr = i->oprs[t];
                 if (opr && 
                         (opr->kind == VAR ||
-                         opr->kind == TMP) && !cpset_belongs(curlive, (long)opr))
+                         opr->kind == TMP) && !cpset_belongs(curlive, (uintptr_t)opr))
                 {
                     COList_t np = NEW(COList);
                     np->opr = opr;
                     np->next = live[id];
                     live[id] = np;
-                    cpset_insert(curlive, (long)opr);
+                    cpset_insert(curlive, (uintptr_t)opr);
                 }
             }
             for (; p; p = p->next)
-                if (cpset_belongs(liveset[sid], (long)p->opr) &&
-                        cpset_insert(curlive, (long)p->opr))
+                if (cpset_belongs(liveset[sid], (uintptr_t)p->opr) &&
+                        cpset_insert(curlive, (uintptr_t)p->opr))
                 {
                     COList_t np = NEW(COList);
                     np->opr = p->opr;
@@ -1792,7 +1792,7 @@ void build_intervals(void) {
                      i->dest->kind == TMP) && i->op != WARR) /* def */
                 {
                     i->is_def = 1;
-                    cpset_erase(curlive, (long)i->dest);
+                    cpset_erase(curlive, (uintptr_t)i->dest);
                 }
                 else
                 {
@@ -1805,13 +1805,13 @@ void build_intervals(void) {
                     COpr_t opr = oprs[t];
                     if (opr && 
                         (opr->kind == VAR ||
-                         opr->kind == TMP) && !cpset_belongs(curlive, (long)opr))
+                         opr->kind == TMP) && !cpset_belongs(curlive, (uintptr_t)opr))
                     {
                         COList_t np = NEW(COList);
                         np->opr = opr;
                         np->next = live[id];
                         live[id] = np;
-                        cpset_insert(curlive, (long)opr);
+                        cpset_insert(curlive, (uintptr_t)opr);
                         add_range(opr, b, i->id);
                     }
                 }
@@ -1820,13 +1820,13 @@ void build_intervals(void) {
         {
             CPhi_t ph = b->phis, i;
             for (i = ph->prev; i != ph; i = i->prev)
-                cpset_erase(curlive, (long)i->dest);
+                cpset_erase(curlive, (uintptr_t)i->dest);
         }
         if (loop_tail[id] != -1)
         {
             COList_t p;
             for (p = live[id]; p; p = p->next) 
-                if (cpset_belongs(curlive, (long)p->opr))
+                if (cpset_belongs(curlive, (uintptr_t)p->opr))
                     add_range_(p->opr, b->first, blks[loop_tail[id]]->last + 1);
         }
     }
@@ -2130,8 +2130,9 @@ void register_alloc(void) {
             COpr_t opr = unhandled[i];
             CRange_t p;
             copr_print(stderr, opr);
+            fprintf(stderr, ":");
             for (p = opr->range; p; p = p->next)
-                fprintf(stderr, ": [%d, %d)", p->l, p->r);
+                fprintf(stderr, " [%d, %d)", p->l, p->r);
             fprintf(stderr, " (begin: %d, end: %d, weight: %d, reg: %d)\n",
                     opr->begin, opr->end, opr->info.var->weight, opr->reg);
         }
@@ -2620,7 +2621,7 @@ void deadcode_elimination() {
 void ssa_func(CType_t func) {
 #define OPRS_ADD(_opr) \
     do { \
-        if (cpset_insert(avs, (long)((_opr)->info.var))) \
+        if (cpset_insert(avs, (uintptr_t)((_opr)->info.var))) \
         { \
             COList_t n = NEW(COList); \
             n->next = oprs; \
@@ -2631,7 +2632,7 @@ void ssa_func(CType_t func) {
 
 #define VS_ADD(_d) \
     do { \
-        if (cpset_insert(vs, (long)(_d))) \
+        if (cpset_insert(vs, (uintptr_t)(_d))) \
         { \
             CVList_t n = NEW(CVList); \
             n->next = vars; \
