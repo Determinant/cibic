@@ -492,6 +492,7 @@ void mips_generate(void) {
                     }
                     break;
                 case PUSH:
+                    if (!i->sysp)
                     {
                         int rs = mips_to_reg(i->src1, reg_v0);
                         /*
@@ -523,20 +524,19 @@ void mips_generate(void) {
                         int j;
                         memset(used_reg, 0, sizeof used_reg);
                         /* NOTE: bad hack */
-                        if (i->src1->kind == IMMF)
+                        if (i->prev->op == PUSH && i->prev->sysp)
                         {
                             char *fname = i->src1->info.str;
                             int flag = 0;
+                            int rs = mips_to_reg(i->prev->src1, 4);
                             if (!strcmp(fname, "__print_int")) flag = 1;
                             else if (!strcmp(fname, "__print_char")) flag = 11;
                             else if (!strcmp(fname, "__print_string")) flag = 4;
-                            if (flag)
-                            {
-                                printf( "\tlw $a0, 0($sp)\n"
-                                        "\tli $2, %d\n"
-                                        "\tsyscall\n", flag);
-                                break;
-                            }
+                            else assert(0);
+                            if (rs != 4) printf("\tmove $4, $%d\n", rs);
+                            printf( "\tli $2, %d\n"
+                                    "\tsyscall\n", flag);
+                            break;
                         }
                         if (rt->type == CSTRUCT || rt->type == CUNION)
                             used_reg[30] = 1; /* save $fp */

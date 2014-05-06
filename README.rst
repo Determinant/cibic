@@ -1,4 +1,4 @@
-CBIC: C Implemented Bare and Ingenuous Compiler
+CIBIC: C Implemented Bare and Ingenuous Compiler
 =================================================
 
 Build Requirements

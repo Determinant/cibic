@@ -76,6 +76,7 @@ struct CInst {
     CType_t wtype;  /* for WARR */
     int id;
     int is_def;
+    int sysp;
     int bret;   /* for CALL */
     int offset; /* for PUSH */
 };

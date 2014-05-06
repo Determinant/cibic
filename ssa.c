@@ -38,6 +38,7 @@ CInst_t cinst_create(void) {
     inst->dest = NULL;
     inst->src1 = NULL;
     inst->src2 = NULL;
+    inst->sysp = 0;
     return inst;
 }
 
@@ -1608,7 +1609,7 @@ void renaming_dfs(CBlock_t blk) {
         CVar_t var = dest->info.var;
         COList_t n = NEW(COList), n2;
         dest->sub = var->cnt++;
-        dest->def = ih->next; /* the first inst */ 
+/*        dest->def = ih->next; *//* the first inst */ 
         n->opr = dest;
         n->next = var->stack;
         var->stack = n;
@@ -1645,7 +1646,7 @@ void renaming_dfs(CBlock_t blk) {
                     CVar_t var = dest->info.var;
                     COList_t n = NEW(COList), n2;
                     dest->sub = var->cnt++;
-                    dest->def = i;
+                    /* dest->def = i; */
                     n->opr = dest;
                     n->next = var->stack;
                     var->stack = n;
@@ -1710,14 +1711,21 @@ void mark_insts(void) {
         CBlock_t b = blks[ord[i]];
         CInst_t ih = b->insts, ii;
         CPhi_t ph = b->phis, pi;
+        for (pi = ph->next; pi != ph; pi = pi->next)
+        {
+            pi->dest->def = ih->next;
+            icnt++;
+        }
         if (cblock_isempty(b))
             b->first = b->last = icnt++;
         else
         {
-            for (pi = ph->next; pi != ph; pi = pi->next)
-                icnt++;
             for (ii = ih->next; ii != ih; ii = ii->next)
+            {
+                if (ii->op != WARR && ii->dest)
+                    ii->dest->def = ii;
                 ii->id = icnt++;
+            }
             b->first = ih->next->id;
             b->last = ih->prev->id;
         }
@@ -2287,8 +2295,10 @@ void const_propagation(void) {
                     {
                         c = copr_create();
                         c->kind = IMM;
+                        /*
                         free(i->src1);
                         free(i->src2);
+                        */
                         i->op = MOVE;
                         i->src1 = c;
                         c->info.imm = immd;
@@ -2342,6 +2352,7 @@ void strength_reduction(void) {
             cstr->id = cstr->prev->id + 1; \
             inst = cinst_create(); \
             inst->op = PUSH; \
+            inst->sysp = 1; \
             inst->src1 = copr_create(); \
             inst->src1->kind = IMMS; \
             inst->src1->info.cstr = cstr; \
@@ -2445,8 +2456,6 @@ void strength_reduction(void) {
                                 print->dest->type = i->dest->type;
                                 print->src1 = copr_create();
                                 print->src1->kind = IMMF;
-
-
                                 PRINT_BARE_STRING;
                                 switch (*(++sp))
                                 {
@@ -2455,6 +2464,7 @@ void strength_reduction(void) {
                                             if (push != i)
                                             {
                                                 np = push->next;
+                                                push->sysp = 1;
                                                 cblock_append(ibuff, push);
                                                 push = np;
                                             }
@@ -2467,6 +2477,7 @@ void strength_reduction(void) {
                                             if (push != i)
                                             {
                                                 np = push->next;
+                                                push->sysp = 1;
                                                 cblock_append(ibuff, push);
                                                 push = np;
                                             }
@@ -2480,6 +2491,7 @@ void strength_reduction(void) {
                                             if (push != i)
                                             {
                                                 np = push->next;
+                                                push->sysp = 1;
                                                 cblock_append(ibuff, push);
                                                 push = np;
                                             }
@@ -2496,6 +2508,7 @@ void strength_reduction(void) {
                                             cstr->id = cstr->prev->id + 1;
                                             inst = cinst_create();
                                             inst->op = PUSH;
+                                            inst->sysp = 1;
                                             inst->src1 = copr_create();
                                             inst->src1->kind = IMMS;
                                             inst->src1->info.cstr = cstr;
@@ -2503,6 +2516,7 @@ void strength_reduction(void) {
                                             for (; push != i; push = np)
                                             {
                                                 np = push->next;
+                                                push->sysp = 1;
                                                 cblock_append(ibuff, push);
                                             }
                                             print->src1->info.str = "printf";
