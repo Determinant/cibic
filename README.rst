@@ -14,7 +14,8 @@ Features
 - ``typedef`` support (together with complex decl)
 - Forward declaration
 - Real Single Static Assignment (with dominator frontier, renaming, interval
-  building and registor allocation algorithm)
+  building and register allocation algorithm)
+- Safe and conservative CSE (common subexpression elimination)
 - Sophisticated semantic checking
 - Small memory footprint
 - Sophisticated error reporting
