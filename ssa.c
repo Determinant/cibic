@@ -2290,6 +2290,7 @@ void strength_reduction(void) {
             {
                 case ADD:
                     SWAP_IMM;
+                case SUB:
                     if (i->src2->kind == IMM && !i->src2->info.imm)
                     {
                         i->op = MOVE;
@@ -2305,6 +2306,23 @@ void strength_reduction(void) {
                         if (n == 1)
                         {
                             i->op = SHL;
+                            i->src2 = copr_create();
+                            i->src2->kind = IMM;
+                            i->src2->info.imm = p;
+                        }
+                    } 
+                    break;
+                case DIV:
+                    SWAP_IMM;
+                    if (i->src2->kind == IMM)
+                    {
+                        int p = 0, n = i->src2->info.imm;
+                        while (!(n & 1)) n >>= 1, p++;
+                        if (n == 1)
+                        {
+                            i->op = SHR;
+                            i->src2 = copr_create();
+                            i->src2->kind = IMM;
                             i->src2->info.imm = p;
                         }
                     } 
@@ -2418,11 +2436,12 @@ void copr_shortcut(COpr_t *opr) {
 }
 
 void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
-    CInst_t i, ih = b->insts;
+    CInst_t i, ih = b->insts, ni;
     CEdge *e;
-    for (i = ih->next; i != ih; i = i->next)
+    for (i = ih->next; i != ih; i = ni)
     {
         CInst_t t;
+        ni = i->next;
         if (i->op == MOVE)
         {
             i->dest->same = i->src1->same;
@@ -2451,6 +2470,23 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
                 case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
                 case EQ: case NE: case LT: case GT: case LE: case GE:
                 case NEG:
+                    /*
+                    if (i->dest->kind == VAR) 
+                    {
+                        CInst_t t = cinst_create();
+                        *t = *i;
+                        t->dest = copr_create();
+                        t->dest->kind = TMP;
+                        t->dest->info.var = ctmp_create();
+                        (t->next = i->next)->prev = t;
+                        (t->prev = i)->next = t;
+                        t->dest->def = t;
+                        t->dest->type = i->dest->type;
+                        t->dest->range = NULL;
+                        cexpmap_insert(cem, t);
+                    }
+                    else 
+                    */
                     if (i->dest->kind == TMP) cexpmap_insert(cem, i);
                     break;
                 default: ;
@@ -2574,6 +2610,7 @@ void ssa_func(CType_t func) {
     /* optimization on SSA */
     const_propagation();
     subexp_elimination();
+    const_propagation();
     strength_reduction();
     deadcode_elimination();
     /* out of SSA */
