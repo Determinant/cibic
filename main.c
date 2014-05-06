@@ -3,8 +3,9 @@
 #include <stdlib.h>
 #include "cibic.tab.h"
 #include "ast.h"
-#include "ssa.h"
 #include "semantics.h"
+#include "ssa.h"
+#include "mips.h"
 
 extern char linebuff[];
 extern char *lptr;
@@ -48,8 +49,7 @@ void print_ast() {
 void print_sem() {
     cibic_init();
     yyparse();
-    semantics_check(ast_root);
-/*    cnode_debug_print(ast_root, 1); */
+    semantics_check(ast_root, 0);
 }
 
 void lib_generate() {
@@ -66,8 +66,16 @@ void lib_generate() {
 void print_ssa() {
     cibic_init();
     yyparse();
-    semantics_check(ast_root);
-    ssa_generate();
+    semantics_check(ast_root, 1);
+    ssa_generate(0);
+}
+
+void compile() {
+    cibic_init();
+    yyparse();
+    semantics_check(ast_root, 1);
+    ssa_generate(1);
+    mips_generate();
     lib_generate();
 }
 
@@ -80,14 +88,17 @@ void print_help() {
 	        "Usage: [options] filename\n"
             "Options:\n" 
             "\t --ast \t\t Print AST Construction\n"
+            "\t --sem \t\t Print Semantic Information\n"
+            "\t --ssa \t\t Print Single Static Assignment\n"
             "\t --help \t Show this info\n"
         );
 }
 
 static struct option lopts[] = {
     { "ast", no_argument, 0, 'a'},
-    { "help", no_argument, 0, 'h'},
     { "sem", no_argument, 0, 'm'},
+    { "ssa", no_argument, 0, 's'},
+    { "help", no_argument, 0, 'h'},
     {0, 0, 0, 0}
 };
 
@@ -95,8 +106,9 @@ enum {
     PRINT_AST,
     PRINT_HELP,
     PRINT_SEM,
-    PRINT_SSA
-} mode = PRINT_SSA;
+    PRINT_SSA,
+    COMPILE
+} mode = COMPILE;
 
 int main(int argc, char **argv) {
     int option_index = 0;
@@ -109,8 +121,9 @@ int main(int argc, char **argv) {
         {
             case 0: break;
             case 'a': mode = PRINT_AST; break;
-            case 'h': print_help(); return 0;
+            case 's': mode = PRINT_SSA; break;
             case 'm': mode = PRINT_SEM; break;
+            case 'h': print_help(); return 0;
         }
     }
     if (optind == argc - 1)
@@ -136,9 +149,10 @@ int main(int argc, char **argv) {
     switch (mode)
     {
         case PRINT_AST: print_ast(); break;
-        case PRINT_HELP: print_help(); break;
         case PRINT_SEM: print_sem(); break;
-        default: print_ssa();
+        case PRINT_SSA: print_ssa(); break;
+        case PRINT_HELP: print_help(); break;
+        case COMPILE: compile(); break;
     }
     return 0;
 }

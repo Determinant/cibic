@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include "semantics.h"
 #include "ast.h"
+
 #define NEW(type) ((type *)malloc(sizeof(type)))
 #define CHECK_TYPE(p, _type) assert(p->type == _type)
 #define ERROR(x) do { error_print x; } while (0)
@@ -94,7 +95,6 @@ const char *csymbol_getname(CSymbol_t sym) {
     return NULL;
 }
 
-#ifdef CIBIC_DEBUG
 CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
     CTable_t ct = NEW(CTable);
     memset(ct->head, 0, sizeof(CTNode*) * MAX_TABLE_SIZE);
@@ -102,14 +102,7 @@ CTable_t ctable_create(Hashfunc_t hfunc, Printfunc_t pfunc) {
     ct->pfunc = pfunc;
     return ct;
 }
-#else
-CTable_t ctable_create(Hashfunc_t hfunc) {
-    CTable_t ct = NEW(CTable);
-    memset(ct->head, 0, sizeof(CTNode*) * MAX_TABLE_SIZE);
-    ct->hfunc = hfunc;
-    return ct;
-}
-#endif
+
 void ctable_destory(CTable_t ct) {
     int i;
     for (i = 0; i < MAX_TABLE_SIZE; i++)
@@ -1129,7 +1122,8 @@ ExpType exp_check_postfix(CNode *p, CScope_t scope) {
             if (!(t1 == CSTRUCT || t1 == CUNION))
                 ERROR((p, "request for the member in something not a structure or union"));
             {
-                calc_size(op1.type);
+                if (calc_size(op1.type) == -1)
+                    ERROR((op1.type->ast, "invalid use of undefined type '%s'", op1.type->name));
                 CVar_t fv = ctable_lookup(op1.type->rec.st.fields,
                                         post->chd->rec.strval);
                 if (!fv)
@@ -1735,7 +1729,7 @@ const char *csymbol_print(void *csym) {
     return buff;
 }
 
-void ctype_print_(CType_t, int lvl);
+void ctype_print_(CType_t, int, CPSet_t);
 void print_tabs(int tnum) { while (tnum--) fprintf(stderr, "    "); }
 void ctype_pre_(CType_t type, int lvl) {
     int t= type->type;
@@ -1746,21 +1740,21 @@ void ctype_pre_(CType_t type, int lvl) {
     }
 }
 
-void cvar_print_(CVar_t cv, int lvl) {
+void cvar_print_(CVar_t cv, int lvl, CPSet_t visited) {
     fprintf(stderr, "[var@%lx:%s :: ", (size_t)cv, cv->name);
     ctype_pre_(cv->type, ++lvl);
-    ctype_print_(cv->type, lvl);
+    ctype_print_(cv->type, lvl, visited);
     fprintf(stderr, "]");
 }
 
-void cdef_print_(CDef_t cd, int lvl) {
+void cdef_print_(CDef_t cd, int lvl, CPSet_t visited) {
     fprintf(stderr, "[def@%lx:%s :: ", (size_t)cd, cd->name);
     ctype_pre_(cd->type, ++lvl);
-    ctype_print_(cd->type, lvl);
+    ctype_print_(cd->type, lvl, visited);
     fprintf(stderr, "]");
 }
 
-void ctype_print_(CType_t ct, int lvl) {
+void ctype_print_(CType_t ct, int lvl, CPSet_t visited) {
     switch (ct->type)
     {
         case CINT: 
@@ -1776,10 +1770,16 @@ void ctype_print_(CType_t ct, int lvl) {
                 int i;
                 CTNode *fn; 
                 lvl++;
-                fprintf(stderr, "[%s@%lx:{name:%s}{size:%d}",
+                fprintf(stderr, "[%s@%lx:{name:%s}",
                         ct->type == CSTRUCT ? "struct" : "union",
-                        (size_t)ct, ct->name, ct->size);
-
+                        (size_t)ct, ct->name);
+                if (cpset_belongs(visited, (long)ct))
+                {
+                    fprintf(stderr, "]\n");
+                    return;
+                }
+                cpset_insert(visited, (long)ct);
+                fprintf(stderr, "{size:%d}", ct->size);
                 fprintf(stderr, "{fields:");
                 if (f)
                 {
@@ -1790,7 +1790,7 @@ void ctype_print_(CType_t ct, int lvl) {
                         {
                             fprintf(stderr, "%s", first ? (first = 0, "") : ",\n");
                             print_tabs(lvl);
-                            cvar_print_((CVar_t)fn->val, lvl);
+                            cvar_print_((CVar_t)fn->val, lvl, visited);
                         }
                 }
                 fprintf(stderr, "}]");
@@ -1802,7 +1802,7 @@ void ctype_print_(CType_t ct, int lvl) {
                 fprintf(stderr, "[arr:{len:%d}{size:%d}]->",
                         ct->rec.arr.len, ct->size);
                 ctype_pre_(type, ++lvl);
-                ctype_print_(type, lvl);
+                ctype_print_(type, lvl, visited);
             }
             break;
         case CPTR:
@@ -1810,7 +1810,7 @@ void ctype_print_(CType_t ct, int lvl) {
                 CType_t type = ct->rec.ref;
                 fprintf(stderr, "[ptr]->");
                 ctype_pre_(type, ++lvl);
-                ctype_print_(type, lvl);
+                ctype_print_(type, lvl, visited);
             }
             break;
         case CFUNC:
@@ -1828,7 +1828,7 @@ void ctype_print_(CType_t ct, int lvl) {
                     for (p = ct->rec.func.params; p; p = p->next)
                     {
                         print_tabs(lvl + 1);
-                        cvar_print_(p, lvl + 1);
+                        cvar_print_(p, lvl + 1, visited);
                         if (p->next) fprintf(stderr, ",\n");
                     }
                 }
@@ -1842,23 +1842,37 @@ void ctype_print_(CType_t ct, int lvl) {
                     for (p = ct->rec.func.local; p; p = p->next)
                     {
                         print_tabs(lvl + 1);
-                        cvar_print_(p, lvl + 1);
+                        cvar_print_(p, lvl + 1, visited);
                         if (p->next) fprintf(stderr, ",\n");
                     }
                 }
                 fprintf(stderr, "}]->");
                 ctype_pre_(type, lvl);
-                ctype_print_(type, lvl);
+                ctype_print_(type, lvl, visited);
             }
             break;
     }
 }
 
-void ctype_print(CType_t ct) { ctype_print_(ct, 0); }
-void cvar_print(CVar_t cv) { cvar_print_(cv, 0); }
-void cdef_print(CDef_t cd) { cdef_print_(cd, 0); }
+void ctype_print(CType_t ct) { 
+    CPSet_t visited = cpset_create();
+    ctype_print_(ct, 0, visited);
+    cpset_destroy(visited);
+}
 
-void semantics_check(CNode *p) {
+void cvar_print(CVar_t cv) { 
+    CPSet_t visited = cpset_create();
+    cvar_print_(cv, 0, visited);
+    cpset_destroy(visited);
+}
+
+void cdef_print(CDef_t cd) {
+    CPSet_t visited = cpset_create();
+    cdef_print_(cd, 0, visited);
+    cpset_destroy(visited);
+}
+
+void semantics_check(CNode *p, int quiet) {
     CScope_t scope = cscope_create();
     basic_type_int = ctype_create("int", CINT, NULL);
     basic_type_char = ctype_create("char", CCHAR, NULL);
@@ -1953,26 +1967,84 @@ void semantics_check(CNode *p) {
                 }
             }
     }
-    /*    cscope_debug_print(scope);
+    if (!quiet)
     {
         CTNode *p;
         int i;
+        cscope_debug_print(scope);
         for (i = 0; i < MAX_TABLE_SIZE; i++)
             for (p = scope->ids->head[i]; p; p = p->next)
             {
                 CSymbol_t tp = (CSymbol_t)(p->val);
                 switch (tp->kind)
                 {
-                    case CVAR: 
-                        if (calc_size(tp->rec.var->type) == -1)
-                            ERROR((tp->rec.var->ast, "storage size of ‘a’ isn’t known"));
-                        cvar_print(tp->rec.var);
-                        break;
+                    case CVAR: cvar_print(tp->rec.var); break;
                     case CTYPE: ctype_print(tp->rec.type); break;
                     case CDEF: cdef_print(tp->rec.def); break;
                 }
                 fprintf(stderr, "\n\n");
             }
+        cnode_debug_print(ast_root, 1);
     }
-    cnode_debug_print(ast_root, 1); */
+}
+
+
+CPSet_t cpset_create(void) {
+    CPSet_t res = NEW(CPSet);
+    memset(res->head, 0, sizeof res->head);
+    return res;
+}
+
+void cpset_destroy(CPSet_t cps) {
+    int i;
+    for (i = 0; i < MAX_TABLE_SIZE; i++)
+    {
+        CPNode *p, *np;
+        for (p = cps->head[i]; p; p = np)
+        {
+            np = p->next;
+            free(p);
+        }
+    }
+    free(cps);
+}
+
+int cpset_insert(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    CPNode *p = cps->head[hv], *np;
+    for (; p; p = p->next)
+        if (p->key == key)
+            return 0;
+    np = NEW(CPNode);
+    np->key = key;
+    np->next = cps->head[hv];
+    cps->head[hv] = np;
+    return 1;
+}
+
+void cpset_erase(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    int flag = 0;
+    CPNode *p = cps->head[hv], *pp = NULL;
+    for (; p; pp = p, p = p->next)
+        if (p->key == key)
+        {
+            flag = 1;
+            break;
+        }
+    if (!flag) return;
+    if (pp)
+        pp->next = p->next;
+    else
+        cps->head[hv] = p->next;
+    free(p);
+}
+
+int cpset_belongs(CPSet_t cps, long key) {
+    unsigned int hv = key % MAX_TABLE_SIZE;
+    CPNode *p = cps->head[hv];
+    for (; p; p = p->next)
+        if (p->key == key)
+            return 1;
+    return 0;
 }

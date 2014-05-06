@@ -14,6 +14,7 @@ static COList_t raw_defs;   /* defintion of all vars and tmps */
 static int bcnt;            /* block counter */
 static int tcnt;            /* temporary counter */
 
+static int quiet;
 static int gbbase;
 static CBlock_t entry;
 static COList_t defs;       /* all defintions that have actual effects */
@@ -143,7 +144,9 @@ void dtree_clear(void) {
 
 void cfg_add_edge(CBlock_t from, CBlock_t to) {
     int fid = from->id, tid = to->id;
+#ifdef CIBIC_DEBUG
     fprintf(stderr, "%d -> %d\n", from->id, to->id);
+#endif
     CEdge *e = NEW(CEdge), *re = NEW(CEdge);
     e->to = to;
     e->next = cfg.head[fid];
@@ -155,7 +158,9 @@ void cfg_add_edge(CBlock_t from, CBlock_t to) {
 }
 
 void dtree_add_edge(CBlock_t from, CBlock_t to) {
+#ifdef CIBIC_DEBUG
     fprintf(stderr, "%d d-> %d\n", from->id, to->id);
+#endif
     int id = from->id;
     CEdge *e = NEW(CEdge);
     e->to = to;
@@ -299,7 +304,6 @@ void cphi_print(CPhi_t phi, CBlock_t blk) {
 }
 
 void cblock_print(CBlock_t blk) {
-    /*if (blk->ref)*/
     fprintf(stderr, "_L%d:\n", blk->id + gbbase);
     {
         CPhi_t p, sp = blk->phis;
@@ -323,9 +327,10 @@ void ssa_func_print(CBlock_t p) {
         cblock_print(p);
 }
 void ssa_func(CType_t);
-void ssa_generate(void) {
+void ssa_generate(int quiet) {
     CTList_t f;
-    CFuncIR_t cf, cf_list = NULL;
+    CFuncIR_t cf;
+    func_ir = NULL;
     for (f = funcs; f; f = f->next)
     {
         cf = NEW(CFuncIR);
@@ -333,18 +338,18 @@ void ssa_generate(void) {
         cf->gbbase = gbbase;
         cf->defs = defs;
         cf->entry = entry;
-        cf->next = cf_list;
-        cf_list = cf;
-        fprintf(stderr, "%s:\n", cf->func->name);
-        ssa_func_print(entry);
+        cf->next = func_ir;
+        func_ir = cf;
         gbbase += bcnt;
         bcnt = 0;
     }
-    mips_prologue();
-    for (cf = cf_list; cf; cf = cf->next)
+    if (!quiet)
     {
-        func_ir = cf;
-        mips_generate();
+        for (cf = func_ir; cf; cf = cf->next)
+        {
+            fprintf(stderr, "%s:\n", cf->func->name);
+            ssa_func_print(cf->entry);
+        }
     }
 }
 
@@ -1381,66 +1386,6 @@ CBlock_t ssa_comp(CNode *p, CBlock_t cur, CBlock_t loop_exit) {
     return cur;
 }
 
-CPSet_t cpset_create(void) {
-    CPSet_t res = NEW(CPSet);
-    memset(res->head, 0, sizeof res->head);
-    return res;
-}
-
-void cpset_destroy(CPSet_t cps) {
-    int i;
-    for (i = 0; i < MAX_TABLE_SIZE; i++)
-    {
-        CPNode *p, *np;
-        for (p = cps->head[i]; p; p = np)
-        {
-            np = p->next;
-            free(p);
-        }
-    }
-    free(cps);
-}
-
-int cpset_insert(CPSet_t cps, long key) {
-    unsigned int hv = key % MAX_TABLE_SIZE;
-    CPNode *p = cps->head[hv], *np;
-    for (; p; p = p->next)
-        if (p->key == key)
-            return 0;
-    np = NEW(CPNode);
-    np->key = key;
-    np->next = cps->head[hv];
-    cps->head[hv] = np;
-    return 1;
-}
-
-void cpset_erase(CPSet_t cps, long key) {
-    unsigned int hv = key % MAX_TABLE_SIZE;
-    int flag = 0;
-    CPNode *p = cps->head[hv], *pp = NULL;
-    for (; p; pp = p, p = p->next)
-        if (p->key == key)
-        {
-            flag = 1;
-            break;
-        }
-    if (!flag) return;
-    if (pp)
-        pp->next = p->next;
-    else
-        cps->head[hv] = p->next;
-    free(p);
-}
-
-int cpset_belongs(CPSet_t cps, long key) {
-    unsigned int hv = key % MAX_TABLE_SIZE;
-    CPNode *p = cps->head[hv];
-    for (; p; p = p->next)
-        if (p->key == key)
-            return 1;
-    return 0;
-}
-
 int dom[MAX_BLOCK], ord[MAX_BLOCK], vis[MAX_BLOCK], par[MAX_BLOCK], ocnt;
 int loop_tail[MAX_BLOCK];
 CPSet_t dfset[MAX_BLOCK], phi[MAX_BLOCK];
@@ -1539,9 +1484,6 @@ void insert_phi(CVList_t vars) {
         CBList_t t = var->defsite;
         CBList_t def = NULL;
         static int indef[MAX_BLOCK];
-#ifdef CIBIC_DEBUG
-        fprintf(stderr, "%s:", var->name);
-#endif
         for (t = var->defsite; t; t = t->next)
             if (++indef[t->cblk->id] == 1)
             {
@@ -1552,11 +1494,6 @@ void insert_phi(CVList_t vars) {
             }
         for (t = var->defsite; t; t = t->next)
             indef[t->cblk->id] = 0; /* clear */
-#ifdef CIBIC_DEBUG
-        for (t = def; t; t = t->next)
-            fprintf(stderr, " %d", t->cblk->id);
-        fprintf(stderr, "\n");
-#endif
         while (def) /* while def not empty */
         {
             CBList_t n = def, i; /* remove some node n from def */
@@ -1913,11 +1850,13 @@ COpr_t cinterv_repr(COpr_t opr) {
 void cinterv_union(COpr_t a, COpr_t b) {
     a = cinterv_repr(a);
     b = cinterv_repr(b);
+#ifdef CIBIC_DEBUG
     fprintf(stderr, "merging ");
     copr_print(stderr, a);
     fprintf(stderr, " ");
     copr_print(stderr, b);
     fprintf(stderr, "\n");
+#endif
     if (a == b) return;
     b->range = crange_merge(b->range, a->range);
     a->par = b;
@@ -1971,25 +1910,6 @@ void init_def(void) {
             if (i->op == MOVE && i->dest->kind == TMP &&
                     (i->src1->kind == TMP || i->src1->kind == VAR))
                 cinterv_union(i->dest, i->src1);
-    }
-}
-
-void print_intervals(void) {
-    COList_t d;
-    for (d = raw_defs; d; d = d->next)
-    {
-        COpr_t opr = d->opr,
-               repr = cinterv_repr(opr);
-        CRange_t p;
-        copr_print(stderr, opr);
-        fprintf(stderr, ": ");
-        if (repr == opr)
-        {
-            for (p = opr->range; p; p = p->next)
-                fprintf(stderr, "[%d, %d)", p->l, p->r);
-        }
-        else copr_print(stderr, repr);
-        fprintf(stderr, "\n");
     }
 }
 
@@ -2073,21 +1993,11 @@ void register_alloc(void) {
     {
         COpr_t opr = unhandled[i];
         CRange_t r;
-        /*
-        if (opr->kind == VAR && opr->range->next)
-        {
-            free(opr->range);
-            opr->range = opr->range->next;
-        }*/   /* discard uncessary load */
         for (r = opr->range; r->next; r = r->next);
         opr->begin = opr->range->l;
         opr->end = r->r;
-        copr_print(stderr, opr);
-        fprintf(stderr, " (key: %d begin: %d, end: %d, weight: %d)\n",
-                opr->range->l, opr->begin, opr->end, opr->info.var->weight);
     }
     qsort(unhandled, dn, sizeof(COpr_t), copr_comp);
-    print_intervals();
     /* preparation done */
     for (i = 0; i < dn; i++)
     {
@@ -2198,13 +2108,6 @@ void register_alloc(void) {
             colist_add(active, c); /* move cur to active */
         }
     }
-    for (i = 0; i < dn; i++)
-    {
-        COpr_t opr = unhandled[i];
-        copr_print(stderr, opr);
-        fprintf(stderr, " (begin: %d, end: %d, weight: %d, reg: %d)\n",
-                opr->begin, opr->end, opr->info.var->weight, opr->reg);
-    }
     for (p = raw_defs; p; p = p->next)
     {
         COpr_t opr = p->opr;
@@ -2219,6 +2122,19 @@ void register_alloc(void) {
         p->opr = unhandled[i];
         p->next = defs;
         defs = p;
+    }
+    if (!quiet)
+    {
+        for (i = 0; i < dn; i++)
+        {
+            COpr_t opr = unhandled[i];
+            CRange_t p;
+            copr_print(stderr, opr);
+            for (p = opr->range; p; p = p->next)
+                fprintf(stderr, ": [%d, %d)", p->l, p->r);
+            fprintf(stderr, " (begin: %d, end: %d, weight: %d, reg: %d)\n",
+                    opr->begin, opr->end, opr->info.var->weight, opr->reg);
+        }
     }
     free(unhandled);
 }
@@ -2295,10 +2211,8 @@ void const_propagation(void) {
                     {
                         c = copr_create();
                         c->kind = IMM;
-                        /*
                         free(i->src1);
                         free(i->src2);
-                        */
                         i->op = MOVE;
                         i->src1 = c;
                         c->info.imm = immd;
@@ -2336,6 +2250,7 @@ void strength_reduction(void) {
         if (bp != buff) \
         { \
             CInst_t print = cinst_create(); \
+            CSList_t cstr = NEW(CSList); \
             print->op = CALL; \
             print->dest = copr_create(); \
             print->dest->kind = TMP; \
@@ -2343,7 +2258,6 @@ void strength_reduction(void) {
             print->dest->type = i->dest->type; \
             print->src1 = copr_create(); \
             print->src1->kind = IMMF; \
-            CSList_t cstr = NEW(CSList); \
             *bp = '\0'; \
             print->src1->kind = IMMF; \
             cstr->str = strdup(buff);  \
@@ -2417,14 +2331,6 @@ void strength_reduction(void) {
                     call_cnt++;
                     break;
                 case CALL:
-                    /*
-                    if (i->src1->kind == IMMF &&
-                        call_cnt == 1 &&
-                        !strcmp(i->src1->info.str, "printf"))
-                    {
-                        i->src1->info.str = "__print_string";
-                    }
-                    */
                     if (i->src1->kind == IMMF &&
                         !strcmp(i->src1->info.str, "printf"))
                     {
@@ -2667,22 +2573,6 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
                 case SHL: case SHR: case AND: case XOR: case OR: case NOR: 
                 case EQ: case NE: case LT: case GT: case LE: case GE:
                 case NEG:
-                    /*
-                    if (i->dest->kind == VAR) 
-                    {
-                        CInst_t t = cinst_create();
-                        *t = *i;
-                        t->dest = copr_create();
-                        t->dest->kind = TMP;
-                        t->dest->info.var = ctmp_create();
-                        (t->next = i->next)->prev = t;
-                        (t->prev = i)->next = t;
-                        t->dest->def = t;
-                        t->dest->type = i->dest->type;
-                        cexpmap_insert(cem, t);
-                    }
-                    else 
-                    */
                     if (i->dest->kind == TMP) cexpmap_insert(cem, i);
                     break;
                 default: ;
@@ -2696,9 +2586,6 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
 
 void subexp_elimination(void) {
     CExpMap_t cem = cexpmap_create();
-/*    int i;
-    for (i = bcnt - 1; i >= 0; i--)
-    */
     subexp_elimination_(entry, cem);
     cexpmap_destroy(cem);
 }
@@ -2752,7 +2639,6 @@ void ssa_func(CType_t func) {
             vars = n; \
         } \
     } while (0)
-
 
     CBlock_t p;
     entry = cblock_create(1);

@@ -185,13 +185,28 @@ void cscope_debug_print(CScope_t cs);
 unsigned int bkdr_hash(const char *str);
 const char *ctable_cvar_print(void *var);
 
-void semantics_check(CNode *ast);
+void semantics_check(CNode *ast, int quiet);
 
 enum DefState{
     FORCE_ID,
     IN_TYPEDEF,
     NONE
 };
+
+typedef struct CPNode CPNode;
+typedef struct CPSet {
+    struct CPNode {
+        long key;
+        CPNode *next;
+    } *head[MAX_TABLE_SIZE];
+} CPSet;
+typedef CPSet *CPSet_t;
+
+CPSet_t cpset_create(void);
+int cpset_insert(CPSet_t cps, long key);
+int cpset_belongs(CPSet_t cps, long key);
+void cpset_erase(CPSet_t cps, long key);
+void cpset_destroy(CPSet_t cps);
 
 int is_identifier(const char *name);
 void push(char *name);

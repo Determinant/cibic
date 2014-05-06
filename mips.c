@@ -315,7 +315,7 @@ void mips_func_end(void) {
     printf("\tjr $31\n");
 }
 
-void mips_generate(void) {
+void mips_func(void) {
     CBlock_t p;
     CType_t rt;
     func = func_ir->func;
@@ -730,4 +730,10 @@ void mips_generate(void) {
         }
     }
     mips_func_end();
+}
+
+void mips_generate(void) {
+    mips_prologue();
+    for (; func_ir; func_ir = func_ir->next)
+        mips_func();
 }
