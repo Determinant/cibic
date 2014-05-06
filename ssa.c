@@ -2508,7 +2508,6 @@ void strength_reduction(void) {
                                             cstr->id = cstr->prev->id + 1;
                                             inst = cinst_create();
                                             inst->op = PUSH;
-                                            inst->sysp = 1;
                                             inst->src1 = copr_create();
                                             inst->src1->kind = IMMS;
                                             inst->src1->info.cstr = cstr;
@@ -2516,7 +2515,6 @@ void strength_reduction(void) {
                                             for (; push != i; push = np)
                                             {
                                                 np = push->next;
-                                                push->sysp = 1;
                                                 cblock_append(ibuff, push);
                                             }
                                             print->src1->info.str = "printf";
