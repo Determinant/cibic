@@ -1390,20 +1390,16 @@ CVar_t semantics_if(CNode *p, CScope_t scope) {
     CVar_t res;
     if (!IS_SCALAR(exp.type->type))
         ERROR((p->chd, "a scalar is required in 'if' condition"));
-    cscope_enter(scope);
     res = semantics_stmt(body1, scope);
-    cscope_exit(scope);
     if (body2->type != NOP)
     {
         CVar_t h, t;
-        cscope_enter(scope);
         if ((h = semantics_stmt(p->chd->next->next, scope)))
         {
             for (t = h; t->next; t = t->next);
             t->next = res;
             res = h;
         }
-        cscope_exit(scope);
     }
     return res;
 }
@@ -1415,11 +1411,9 @@ CVar_t semantics_for(CNode *p, CScope_t scope) {
     CVar_t res;
     if (p->chd->next->type != NOP && !IS_SCALAR(exp.type->type))
         ERROR((p->chd->next, "a scalar is required in 'for' condition"));
-    cscope_enter(scope);
     scope->inside_loop++;
     res = semantics_stmt(p->chd->next->next->next, scope);
     scope->inside_loop--;
-    cscope_exit(scope);
     return res;
 }
 
@@ -1428,11 +1422,9 @@ CVar_t semantics_while(CNode *p, CScope_t scope) {
     CVar_t res;
     if (!IS_SCALAR(exp.type->type))
         ERROR((p->chd, "a scalar is required in 'while' condition"));
-    cscope_enter(scope);
     scope->inside_loop++;
     res = semantics_stmt(p->chd->next, scope);
     scope->inside_loop--;
-    cscope_exit(scope);
     return res;
 }
 
