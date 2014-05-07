@@ -8,7 +8,8 @@ char linebuff[MAX_LINEBUFF], *lptr = linebuff;
 #define YY_USER_ACTION \
     do { \
         yylloc.first_line = yylloc.last_line = yylineno; \
-        yylloc.first_column = yycolumn; yylloc.last_column = yycolumn + yyleng - 1; \
+        yylloc.first_column = yycolumn; \
+        yylloc.last_column = yycolumn + yyleng - 1; \
         yycolumn += yyleng; \
         memmove(lptr, yytext, yyleng);  \
         lptr += yyleng; \

@@ -144,7 +144,7 @@ struct CScope {
     CSNode *top; 
     CTable_t ids;       /* ordinary identifiers */
     CTable_t tags;      /* union & struct tags */
-    CTable_t ext_link;  /* external linkage */
+/*    CTable_t ext_link;   external linkage */
 };
 
 typedef struct ExpType {
