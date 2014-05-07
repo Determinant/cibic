@@ -71,8 +71,9 @@ to let the user do some extra actions after each token is read. So I maintained
 a global variable ``\texttt{yycolumn}'' to keep the current column, a global
 char array ``\texttt{linebuff}'' to buffer the text being read for error
 report.
-\begin{figure}
+\begin{listing}[H]
     \centering
+    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
     \begin{minted}{c}
 int yycolumn = 1;
 char linebuff[MAX_LINEBUFF], *lptr = linebuff;
@@ -94,7 +95,7 @@ char linebuff[MAX_LINEBUFF], *lptr = linebuff;
     } while (0)
 \end{minted}
 \caption {Code Snippet to Track Down Location}
-\end{figure}
+\end{listing}
 
 \section{Semantic Analysis and Implementation}
 The parsing process is also an AST (Abstrct Syntax Tree) construction process.
@@ -195,24 +196,26 @@ depicted in figure.
 Thanks to the level information kept in each ``\texttt{CTNode}'', we do not
 have to establish a hash table for every scopes, which may be memory consuming.
 Instead, whenever a new scope begins, CIBIC simply pushes a new frame to scope
-stack. This is achieved by creating an instance of ``\texttt{CSNode}'', setting its
-``\texttt{next}'' field to the ``\texttt{top}'' field of the
+stack. This is achieved by creating an instance of ``\texttt{CSNode}'', setting
+its ``\texttt{next}'' field to the ``\texttt{top}'' field of the
 ``\texttt{CScope}'' then letting the ``\texttt{top}'' points to the new frame,
-finally increasing ``\texttt{lvl}'' by one. Whenever a new symbol is being added
-to ``\texttt{CScope}'', CIBIC adds the symbol to one of the tables
+finally increasing ``\texttt{lvl}'' by one. Whenever a new symbol is being
+added to ``\texttt{CScope}'', CIBIC adds the symbol to one of the tables
 ``\texttt{ids}'' and ``\texttt{tags}'', then also appends the symbol to the
-``\texttt{symlist}'' of the top of the scope stack. The most elegant characteristics of
-open addressing hash tables is, for the same name appears in different scopes,
-the symbol defined at the inner most is always ahead of others in the chain of
-the table because it is the most recently added one. So, for lookups, CIBIC
-just need to return the first node having the same name in the chain, which is very
-time-efficient. At last, when a scope ends, CIBIC scans the whole
-``\texttt{symlist}'' of the top scope frame, and tries to remove these symbols
-from the table. Figure presents the content of the scope stack when the
-analysis proceeds into the inner most declaration of a. See chains with hash
-code 0097 and 0098.
+``\texttt{symlist}'' of the top of the scope stack. The most elegant
+characteristics of open addressing hash tables is, for the same name appears in
+different scopes, the symbol defined at the inner most is always ahead of
+others in the chain of the table because it is the most recently added one. So,
+for lookups, CIBIC just need to return the first node having the same name in
+the chain, which is very time-efficient. At last, when a scope ends, CIBIC
+scans the whole ``\texttt{symlist}'' of the top scope frame, and tries to
+remove these symbols from the table. Figure presents the content of the scope
+stack when the analysis proceeds into the inner most declaration of a. See
+chains with hash code 0097 and 0098.
 \begin{figure}[H]
-    \centering
+%    \centering
+    \begin{minipage}{0.35\textwidth}
+%    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
     \begin{minted}{c}
 int main() {
     int a, b;
@@ -226,11 +229,10 @@ int main() {
     }
 }
     \end{minted}
-\caption {Source Code Being Proceeded}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
+ \caption {Source Code Being Proceeded}
+\end{minipage}
+%    \centering
+    \begin{minipage}{0.5\textwidth}
     \begin{BVerbatim}
     [0072]->[int@747e780:0]
     [0097]->[a@7484ae0:3]->[a@7484890:2]->[a@7484580:1]
@@ -247,8 +249,76 @@ int main() {
     [0971]->[char@747e9f0:0]
     \end{BVerbatim}
     \caption {Dump Info from CIBIC: Scope Stack}
+\end{minipage}
 \end{figure}
-\subsection{Type Definition}
+
+\subsection{Type System}
+C has a small set of basic types. In CIBIC, basic types include \texttt{char},
+\texttt{int} and \texttt{void} (literally, \texttt{void} is not an actual
+type). However, C supports two powerful type aggregation: arrays and structures
+(unions), and also supports an indirect access tool: pointer. This makes the
+type system much more complex and usable in practice. CIBIC uses the concept
+``type tree'' to organize types. All basic types are the leaves of a type tree,
+while aggregate types and pointers are the intermediate nodes. Figure shows a
+typical type tree of a C struct. 
+
+A type tree is good at preserving type hierarchy info which may be extremely
+useful in type checking. For example, when checking a expression \texttt{*a},
+compiler first check if the root of the type tree of a is a pointer. If not,
+error message will be printed and semantic checking fails. Otherwise, the type
+of the expression result is the subtree of the only child of the root. Also, a
+type tree enables us to implement complex type nesting, which will be discussed
+later on.
+
+CIBIC has support for user-defined types, which are defined via the keyword
+``\texttt{typedef}''.  However, ``\texttt{typedef}'' is notoriously difficult
+to deal with due to the ambiguity caused by the language design. For example,
+in ``\texttt{int A}'', A is a \textbf{variable} of integer type, but in
+``\texttt{A a}'', A is a user-defined \textbf{type}. The subtle semantic
+difference is caused by context. In former case, A is identified as a
+identifier token, while in latter case, identified as a type specifier. The
+meaning of a token should be made clear during lexical analysis which does not
+take in account of context. So the most direct and effective way to implement
+\texttt{typedef} is to hack the lexer and parser. CIBIC maintains a
+``\texttt{typedef\_stack}'' to denote current parsing status. When a parser has
+just read a type specifier, before it moves on, it invokes
+``\texttt{def\_enter(FORCE\_ID)}'' to notify ``\texttt{typedef\_stack}'' the
+subsequent string token must be an identifier instead of a type specifier. As
+for ``\texttt{typedef}'' statements, the parser will invoke
+``\texttt{def\_enter(IN\_TYPEDEF)}'' to record the newly defined typename by
+adding an entry to a hash table. In the lexer, when a string token is being
+read, it invokes ``\texttt{is\_identifier}'' to make sure whether the string is
+an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}. 
+
+Figure demonstrates a very subtle use of \texttt{typedef}, which can be parsed perfectly by CIBIC.
+
+\begin{listing}[H]
+    \centering
+    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+    \begin{minted}{c}
+/* It's quite common to define a shorthand `I' for `struct I'. */
+typedef struct I I; 
+/* Declaration of a function with parameter `a' of user-defined type `I'. */
+int incomp(I a);
+/* The definition of `I' is postponed. */
+struct I { 
+    int i, j;
+};
+/* Function definition of previous declared one. */
+int incomp(I a) {}
+/* Define `b' as an int type. */
+typedef int b;
+int main() {
+    /* Variable `b' is of type `b', an integer actually. */
+    I i;
+    b b;
+    incomp(i);
+}
+\end{minted}
+\caption {Code Snippet to Track Down Location}
+\end{listing}
+
+
 \subsection{Complex Declaration and Function Pointer}
 \section{Intermadiate Representation}
 \subsection{Single Static Assignment Form}
