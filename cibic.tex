@@ -1,0 +1,258 @@
+\documentclass[10pt, a4paper]{article}
+
+\usepackage{xeCJK, fontspec}
+\usepackage{amsmath, verbatim}
+\usepackage{setspace, float}
+\usepackage{graphicx, wrapfig}
+\usepackage{rotating, enumerate, minted, fancyvrb}
+\usepackage[left=1in, right=1in]{geometry}
+\usepackage[font=small]{caption}
+
+\defaultfontfeatures{Mapping=tex-text} 
+\setCJKmainfont[BoldFont={STHeiti}]{Adobe Song Std}
+\XeTeXlinebreaklocale "zh"
+\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+
+\setlength{\parindent}{2em}
+\setlength{\parskip}{1em}
+\makeatletter
+\def\verbatim@font{\ttfamily\small} 
+\makeatother
+
+\makeatletter
+\let\@afterindentrestore\@afterindentfalse
+\let\@afterindentfalse\@afterindenttrue
+\@afterindenttrue
+\makeatother
+
+\xeCJKsetup{CJKglue=\hspace{0pt plus .08 \baselineskip }}
+
+\newcommand{\ud}{\mathrm{d}}
+\usemintedstyle{colorful}
+\begin{document}
+\title{\Large{CIBIC: C Implemented Bare and Ingenuous Compiler}}
+
+\author{\textsc{尹茂帆 Ted Yin}\\ \\\multicolumn{1}{p{.7\textwidth}}
+    {\centering\emph{F1224004 5120309051\\
+Shanghai Jiao Tong University ACM Class}}}
+\maketitle
+\begin{abstract}
+    This report presents the design and features of a simple C compiler which
+    generates MIPS assembly code. Although not all the language requirements
+    and features are implemented according to the standard, it still supports
+    major C features, such as basic types (void, int, char), basic flow control
+    syntax (if, while-loop, for-loop), user-defined types (aka. typedef),
+    functions, pointers (including function pointers), struct/union (may be
+    nested), etc. Besides, it makes use of SSA (Single Static Assignment) form
+    for the IR (Intermediate Representation) and optimization. The whole compiler is
+    written in pure C, obeying C89/C99 standard. The report first introduces
+    the lexer and parser generation, then focuses on the data structures being
+    used in the AST (Abstract Syntax Tree) and symbol tables, and makes a
+    conclusion on the supported syntactical features. Next, the report shows
+    the intermediate representation design and claims the techniques that have
+    been used in the project. Finally, various optimization techniques are
+    presented and discussed, some are accompanied with code snippets.
+\end{abstract}
+\section{Lexer and Parser}
+CIBIC makes good use of existing lexer and parser generators. It uses Flex to
+generate lexer while using Bison as parser generator. Both generators read
+boilerplate text which contains C code fragments to be filled in the generated
+lexer/parser. The best practice, I suggest, is to avoid embedding too much
+concrete code in the boilerplate. Instead, we shall write well-designed
+functions in a separate file (``\texttt{ast.c}'' in CIBIC) and invoke functions in the
+boilerplate. The reason is that it is almost not practical nor convenient to
+debug the generated lexer or parser. Using the seperation method, we can set up
+breakpoints in the seperate file easily and debug on the fly. The declarations
+of all functions that may be invoked during parsing can be found in ``\texttt{ast.h}''.
+
+It requires a little more effort to track the location of each token using
+Flex. Luckily, Flex provides with a macro called ``\texttt{YY\_USER\_ACTION}''
+to let the user do some extra actions after each token is read. So I maintained
+a global variable ``\texttt{yycolumn}'' to keep the current column, a global
+char array ``\texttt{linebuff}'' to buffer the text being read for error
+report.
+\begin{figure}
+    \centering
+    \begin{minted}{c}
+int yycolumn = 1;
+char linebuff[MAX_LINEBUFF], *lptr = linebuff;
+
+#define YY_USER_ACTION \
+    do { \
+        yylloc.first_line = yylloc.last_line = yylineno; \
+        yylloc.first_column = yycolumn; \
+        yylloc.last_column = yycolumn + yyleng - 1; \
+        yycolumn += yyleng; \
+        memmove(lptr, yytext, yyleng);  \
+        lptr += yyleng; \
+    } while (0);
+
+#define NEW_LINE_USER_ACTION \
+    do { \
+        yycolumn = 1; \
+        lptr = linebuff; \
+    } while (0)
+\end{minted}
+\caption {Code Snippet to Track Down Location}
+\end{figure}
+
+\section{Semantic Analysis and Implementation}
+The parsing process is also an AST (Abstrct Syntax Tree) construction process.
+By calling the corresponding functions, the generated parser create tree nodes
+and merge them into subtrees. The major issue here is how to design a proper
+data structure to represent and maintain the AST. In CIBIC, all nodes in an AST
+are instances of struct ``CNode'' in figure.
+\begin{figure}[H]
+    \centering
+    \texttt {
+    \begin{tabular}{|c|}
+        \hline
+        type \\
+        \footnotesize{describe syntax information e.g. expression or declarator} \\ \hline
+        rec: \\
+        \footnotesize{\textbf{union of intval / subtype / strval}} \\
+        \footnotesize{stores detailed information e.g. which kind of expression it is} \\ \hline
+        ext: \\
+        \footnotesize{\textbf{struct of type, var, autos, const\_val, is\_const, offset}} \\
+        \footnotesize{extended info, where annotation is made} \\ \hline
+        chd \\
+        \footnotesize{the left most child of the node} \\ \hline
+        next \\
+        \footnotesize{the next sibling} \\ \hline
+        loc \\
+        \footnotesize{\textbf{struct of row, col}} \\
+        \footnotesize{the location in the source code, for error report} \\ \hline
+        \end{tabular}
+    }
+    \caption{The Structure of a CNode instance}
+\end{figure}
+Since a node may have variable number of children, the most common and
+efficient approach is to implement a left-child right-sibling binary tree. The
+field ``\texttt{chd}'' points to the child and ``\texttt{next}'' points to the
+next sibling. This implementation is extremely flexible because we do not need
+to know the number of children in advance, which brings us the convenience of
+appending argument nodes to a function invocation node in the boilerplate.
+
+After construction of the AST, the tree will be traversed by calling mutually
+recursive functions declared in ``\texttt{semantics.h}''. The entry call is ``\texttt{semantics\_check}'' which will set up the symbol tables and call ``\texttt{semantics\_func}'' and ``\texttt{semantics\_decl}'' to analyze function definitions and global declarations. These functions will further invoke more basic functions such as ``\texttt{semantics\_comp}'' (handles compound statements) to fully check the semantics and gather variable typing information.
+
+The key data structures in the semantic checking are \textbf{symbol tables}. Symbol tables maintain variables and types in different scopes across different name spaces. When a variable is defined, the corresponding type specifer will be checked and binds to the variable. Also, when the scope ends, all variable bindings living within the scope will be removed from the table. Although they are removed from the table, the bindings are still referenced by some nodes on the AST, so that the AST becomes ``\textbf{annotated AST}''. In CIBIC, the variable reference is stored in ``\texttt{ext.var}'' field of ``\texttt{CNode}'' and the type information of an subexpression is annotated at ``\texttt{ext.type}''. Thus, in a word, symbol tables stores all symbols that are currently \textbf{visible}.
+
+In C language, there are four name spaces: for label names, tags, members of structures or unions and all other identifiers. Goto statments are not implemented in CIBIC, so there're actually three name spaces. Since each kind of structures or unios have its own name space for its fields, we treat them specially and create a new table for each of them. For tags and all other identifiers, we set up two global tables. Besides name spaces, scoping is also a very important concept in C. It seems to be an orthogonal concept to name spaces.
+
+Considering these two concepts, CIBIC implements a struct named ``\texttt{CScope}'' to maintain all the information as shown in figure.
+\begin{figure}[H]
+    \centering
+    \texttt {
+    \begin{tabular}{|c|}
+        \hline
+        lvl \\
+        \footnotesize{current nesting level of scopes, e.g. 0 for global scope} \\ \hline
+        func \\
+        \footnotesize{current function, helpful when analyzing a return statement} \\ \hline
+        inside\_loop \\
+        \footnotesize{if the scope is inside a loop, help full when analyzing a break statement} \\ \hline
+        top \\
+        \footnotesize{points to the top of the scope stack} \\ \hline
+        ids \\
+        \footnotesize{name space for all other variables} \\ \hline
+        tags \\
+        \footnotesize{name space for all tags (name of structs or unions)} \\ \hline
+        \end{tabular}
+    }
+    \caption{The Structure of a CScope instance}
+\end{figure}
+
+Note that ``\texttt{top}'' points to an instance of ``\texttt{CSNode}'' which
+has two fields ``\texttt{symlist}'' and ``\texttt{next}''. ``\texttt{symlist}''
+points to a list of symbols in the same scope while ``\texttt{next}'' links to
+the outer scope which is another instance of ``\texttt{CSNode}''. As for
+``\texttt{ids}'' and ``\texttt{tags}'', they are pointers to
+``\texttt{CTable}'',stores all the current symbols. As mentioned above, for
+each struct or union, there is also a pointer to ``\texttt{CTable}'' stores all
+field names. ``\texttt{CTable}'' is an open addressing hash table
+containing nodes of the type ``\texttt{CTNode}''. The structure of each node is
+depicted in figure.
+
+\begin{figure}[H]
+    \centering
+    \texttt {
+    \begin{tabular}{|c|}
+        \hline
+        key \\
+        \footnotesize{char *} \\ \hline
+        val \\
+        \footnotesize{void *, in order to also be used in checking duplicate parameters, etc.} \\ \hline
+        next \\
+        \footnotesize{the next element which has the same hash value} \\ \hline
+        lvl \\
+        \footnotesize{scope level} \\ \hline
+        \end{tabular}
+    }
+    \caption{The Structure of a CTNode instance}
+\end{figure}
+
+Thanks to the level information kept in each ``\texttt{CTNode}'', we do not
+have to establish a hash table for every scopes, which may be memory consuming.
+Instead, whenever a new scope begins, CIBIC simply pushes a new frame to scope
+stack. This is achieved by creating an instance of ``\texttt{CSNode}'', setting its
+``\texttt{next}'' field to the ``\texttt{top}'' field of the
+``\texttt{CScope}'' then letting the ``\texttt{top}'' points to the new frame,
+finally increasing ``\texttt{lvl}'' by one. Whenever a new symbol is being added
+to ``\texttt{CScope}'', CIBIC adds the symbol to one of the tables
+``\texttt{ids}'' and ``\texttt{tags}'', then also appends the symbol to the
+``\texttt{symlist}'' of the top of the scope stack. The most elegant characteristics of
+open addressing hash tables is, for the same name appears in different scopes,
+the symbol defined at the inner most is always ahead of others in the chain of
+the table because it is the most recently added one. So, for lookups, CIBIC
+just need to return the first node having the same name in the chain, which is very
+time-efficient. At last, when a scope ends, CIBIC scans the whole
+``\texttt{symlist}'' of the top scope frame, and tries to remove these symbols
+from the table. Figure presents the content of the scope stack when the
+analysis proceeds into the inner most declaration of a. See chains with hash
+code 0097 and 0098.
+\begin{figure}[H]
+    \centering
+    \begin{minted}{c}
+int main() {
+    int a, b;
+    if (a > 0)
+    {
+        int a, b;
+        if (a > 0)
+        {
+            int a, b;
+        }
+    }
+}
+    \end{minted}
+\caption {Source Code Being Proceeded}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{BVerbatim}
+    [0072]->[int@747e780:0]
+    [0097]->[a@7484ae0:3]->[a@7484890:2]->[a@7484580:1]
+    [0098]->[b@7484bb0:3]->[b@7484960:2]->[b@7484710:1]
+    [0108]->[printf@747f150:0]
+    [0188]->[scanf@747f640:0]
+    [0263]->[__print_string@7484010:0]
+    [0278]->[__print_char@7483fc0:0]
+    [0623]->[__print_int@747f8b0:0]
+    [0778]->[malloc@7484100:0]
+    [0827]->[void@747eee0:0]
+    [0856]->[main@7484530:0]
+    [0908]->[memcpy@7484060:0]
+    [0971]->[char@747e9f0:0]
+    \end{BVerbatim}
+    \caption {Dump Info from CIBIC: Scope Stack}
+\end{figure}
+\subsection{Type Definition}
+\subsection{Complex Declaration and Function Pointer}
+\section{Intermadiate Representation}
+\subsection{Single Static Assignment Form}
+\subsection{Phi-functions}
+\subsection{Register Allocation}
+\section{Performance and Optimization}
+\end{document}
