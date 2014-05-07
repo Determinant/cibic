@@ -137,6 +137,7 @@ typedef struct CExpMap {
 typedef CExpMap *CExpMap_t;
 
 CExpMap_t cexpmap_create(void);
+CExpMap_t cexpmap_dup(CExpMap_t cem);
 unsigned int cexpmap_hash(CInst_t exp);
 int cexpmap_comp(CInst_t exp1, CInst_t exp2);
 void cexpmap_insert(CExpMap_t cem, CInst_t exp);

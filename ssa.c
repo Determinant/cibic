@@ -2493,6 +2493,23 @@ CExpMap_t cexpmap_create(void) {
     return res;
 }
 
+CExpMap_t cexpmap_dup(CExpMap_t cem) {
+    int i;
+    CExpMap_t res = cexpmap_create();
+    for (i = 0; i < MAX_TABLE_SIZE; i++)
+    {
+        CENode *p, *t;
+        for (p = cem->head[i]; p; p = p->next)
+        {
+            t = NEW(CENode);
+            t->exp = p->exp;
+            t->next = res->head[i];
+            res->head[i] = t;
+        }
+    }
+    return res;
+}
+
 int cexpmap_comp(CInst_t exp1, CInst_t exp2) {
     if (exp1->op != exp2->op) return 0;
     if (!copr_eq(exp1->src1, exp2->src1)) return 0;
@@ -2581,8 +2598,11 @@ void subexp_elimination_(CBlock_t b, CExpMap_t cem) {
         }
     }
     for (e = dtree.head[b->id]; e; e = e->next)
-        subexp_elimination_(e->to, cem);
-    cexpmap_clear(cem);
+    {
+        CExpMap_t scem = cexpmap_dup(cem);
+        subexp_elimination_(e->to, scem);
+        cexpmap_destroy(scem);
+    }
 }
 
 void subexp_elimination(void) {
