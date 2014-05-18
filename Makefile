@@ -1,7 +1,7 @@
-ifeq ($(mode), release)
-	CFLAGS = -O2 -Wall
-else
+ifeq ($(mode), debug)
 	CFLAGS = -g -Wall -Wextra -DCIBIC_DEBUG
+else
+	CFLAGS = -O2 -Wall
 endif
 
 all: cibic
