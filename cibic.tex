@@ -4,26 +4,26 @@
 \usepackage{amsmath, verbatim}
 \usepackage{setspace, float}
 \usepackage{graphicx, wrapfig}
-\usepackage{rotating, enumerate, minted, fancyvrb}
+\usepackage{rotating, enumerate, minted, fancyvrb, longtable}
 \usepackage[left=1in, right=1in]{geometry}
 \usepackage[font=small]{caption}
 
-\defaultfontfeatures{Mapping=tex-text} 
+\defaultfontfeatures{Mapping=tex-text}
 \setCJKmainfont[BoldFont={STHeiti}]{Adobe Song Std}
-\XeTeXlinebreaklocale "zh"
-\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
+%\XeTeXlinebreaklocale "zh"
+%\XeTeXlinebreakskip = 0pt plus 1pt minus 0.1pt
 
-\setlength{\parindent}{2em}
-\setlength{\parskip}{1em}
+%\setlength{\parindent}{2em}
+%\setlength{\parskip}{1em}
 \makeatletter
-\def\verbatim@font{\ttfamily\small} 
+\def\verbatim@font{\ttfamily\small}
 \makeatother
 
-\makeatletter
-\let\@afterindentrestore\@afterindentfalse
-\let\@afterindentfalse\@afterindenttrue
-\@afterindenttrue
-\makeatother
+%\makeatletter
+%\let\@afterindentrestore\@afterindentfalse
+%\let\@afterindentfalse\@afterindenttrue
+%\@afterindenttrue
+%\makeatother
 
 \xeCJKsetup{CJKglue=\hspace{0pt plus .08 \baselineskip }}
 
@@ -38,39 +38,40 @@ Shanghai Jiao Tong University ACM Class}}}
 \maketitle
 \begin{abstract}
     This report presents the design and features of a simple C compiler which
-    generates MIPS assembly code. Although not all the language requirements
-    and features are implemented according to the standard, it still supports
-    major C features, such as basic types (void, int, char), basic flow control
-    syntax (if, while-loop, for-loop), user-defined types (aka. typedef),
-    functions, pointers (including function pointers), struct/union (may be
-    nested), etc. Besides, it makes use of SSA (Single Static Assignment) form
-    for the IR (Intermediate Representation) and optimization. The whole compiler is
-    written in pure C, obeying C89/C99 standard. The report first introduces
-    the lexer and parser generation, then focuses on the data structures being
-    used in the AST (Abstract Syntax Tree) and symbol tables, and makes a
-    conclusion on the supported syntactical features. Next, the report shows
-    the intermediate representation design and claims the techniques that have
-    been used in the project. Finally, various optimization techniques are
-    presented and discussed, some are accompanied with code snippets.
+    generates MIPS assembly code. Although not all the language requirements and
+    features are implemented according to the standard, it still supports major
+    C features, such as basic types (void, int, char), basic flow control syntax
+    (if, while-loop, for-loop), user-defined types (aka. typedef), functions,
+    pointers (including function pointers), struct/union (may be nested), etc.
+    Besides, it makes use of SSA (Single Static Assignment) form for the IR
+    (Intermediate Representation) and optimization. The whole compiler is
+    written in pure C, obeying C89/C99 standard. The report first introduces the
+    lexer and parser generation, then focuses on the data structures being used
+    in the AST (Abstract Syntax Tree) and symbol tables, and makes a conclusion
+    on the supported syntactical features. Next, the report shows the
+    intermediate representation design and claims the techniques that have been
+    used in the project. Finally, various optimization techniques are presented
+    and discussed, some are accompanied with code snippets.
 \end{abstract}
+\tableofcontents
 \section{Lexer and Parser}
 CIBIC makes good use of existing lexer and parser generators. It uses Flex to
 generate lexer while using Bison as parser generator. Both generators read
 boilerplate text which contains C code fragments to be filled in the generated
 lexer/parser. The best practice, I suggest, is to avoid embedding too much
 concrete code in the boilerplate. Instead, we shall write well-designed
-functions in a separate file (``\texttt{ast.c}'' in CIBIC) and invoke functions in the
-boilerplate. The reason is that it is almost not practical nor convenient to
-debug the generated lexer or parser. Using the seperation method, we can set up
-breakpoints in the seperate file easily and debug on the fly. The declarations
-of all functions that may be invoked during parsing can be found in ``\texttt{ast.h}''.
+functions in a separate file (``\texttt{ast.c}'' in CIBIC) and invoke functions
+in the boilerplate. The reason is that it is almost not practical nor convenient
+to debug the generated lexer or parser. Using the seperation method, we can set
+up breakpoints in the seperate file easily and debug on the fly. The
+declarations of all functions that may be invoked during parsing can be found in
+``\texttt{ast.h}''.
 
-It requires a little more effort to track the location of each token using
-Flex. Luckily, Flex provides with a macro called ``\texttt{YY\_USER\_ACTION}''
-to let the user do some extra actions after each token is read. So I maintained
-a global variable ``\texttt{yycolumn}'' to keep the current column, a global
-char array ``\texttt{linebuff}'' to buffer the text being read for error
-report.
+It requires a little more effort to track the location of each token using Flex.
+Luckily, Flex provides with a macro called ``\texttt{YY\_USER\_ACTION}'' to let
+the user do some extra actions after each token is read. So I maintained a
+global variable ``\texttt{yycolumn}'' to keep the current column, a global char
+array ``\texttt{linebuff}'' to buffer the text being read for error report.
 \begin{listing}[H]
     \centering
     \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
@@ -135,13 +136,37 @@ to know the number of children in advance, which brings us the convenience of
 appending argument nodes to a function invocation node in the boilerplate.
 
 After construction of the AST, the tree will be traversed by calling mutually
-recursive functions declared in ``\texttt{semantics.h}''. The entry call is ``\texttt{semantics\_check}'' which will set up the symbol tables and call ``\texttt{semantics\_func}'' and ``\texttt{semantics\_decl}'' to analyze function definitions and global declarations. These functions will further invoke more basic functions such as ``\texttt{semantics\_comp}'' (handles compound statements) to fully check the semantics and gather variable typing information.
+recursive functions declared in ``\texttt{semantics.h}''. The entry call is
+``\texttt{semantics\_check}'' which will set up the symbol tables and call
+``\texttt{semantics\_func}'' and ``\texttt{semantics\_decl}'' to analyze
+function definitions and global declarations. These functions will further
+invoke more basic functions such as ``\texttt{semantics\_comp}'' (handles
+compound statements) to fully check the semantics and gather variable typing
+information.
 
-The key data structures in the semantic checking are \textbf{symbol tables}. Symbol tables maintain variables and types in different scopes across different name spaces. When a variable is defined, the corresponding type specifer will be checked and binds to the variable. Also, when the scope ends, all variable bindings living within the scope will be removed from the table. Although they are removed from the table, the bindings are still referenced by some nodes on the AST, so that the AST becomes ``\textbf{annotated AST}''. In CIBIC, the variable reference is stored in ``\texttt{ext.var}'' field of ``\texttt{CNode}'' and the type information of an subexpression is annotated at ``\texttt{ext.type}''. Thus, in a word, symbol tables stores all symbols that are currently \textbf{visible}.
+The key data structures in the semantic checking are \textbf{symbol tables}.
+Symbol tables maintain variables and types in different scopes across different
+name spaces. When a variable is defined, the corresponding type specifer will be
+checked and binds to the variable. Also, when the scope ends, all variable
+bindings living within the scope will be removed from the table. Although they
+are removed from the table, the bindings are still referenced by some nodes on
+the AST, so that the AST becomes ``\textbf{annotated AST}''. In CIBIC, the
+variable reference is stored in ``\texttt{ext.var}'' field of ``\texttt{CNode}''
+and the type information of an subexpression is annotated at
+``\texttt{ext.type}''. Thus, in a word, symbol tables stores all symbols that
+are currently \textbf{visible}.
 
-In C language, there are four name spaces: for label names, tags, members of structures or unions and all other identifiers. Goto statments are not implemented in CIBIC, so there're actually three name spaces. Since each kind of structures or unios have its own name space for its fields, we treat them specially and create a new table for each of them. For tags and all other identifiers, we set up two global tables. Besides name spaces, scoping is also a very important concept in C. It seems to be an orthogonal concept to name spaces.
+In C language, there are four name spaces: for label names, tags, members of
+structures or unions and all other identifiers. Goto statments are not
+implemented in CIBIC, so there're actually three name spaces. Since each kind of
+structures or unios have its own name space for its fields, we treat them
+specially and create a new table for each of them. For tags and all other
+identifiers, we set up two global tables. Besides name spaces, scoping is also a
+very important concept in C. It seems to be an orthogonal concept to name
+spaces.
 
-Considering these two concepts, CIBIC implements a struct named ``\texttt{CScope}'' to maintain all the information as shown in figure.
+Considering these two concepts, CIBIC implements a struct named
+``\texttt{CScope}'' to maintain all the information as shown in figure.
 \begin{figure}[H]
     \centering
     \texttt {
@@ -260,7 +285,7 @@ type). However, C supports two powerful type aggregation: arrays and structures
 type system much more complex and usable in practice. CIBIC uses the concept
 ``type tree'' to organize types. All basic types are the leaves of a type tree,
 while aggregate types and pointers are the intermediate nodes. Figure shows a
-typical type tree of a C struct. 
+typical type tree of a C struct.
 
 A type tree is good at preserving type hierarchy info which may be extremely
 useful in type checking. For example, when checking a expression \texttt{*a},
@@ -269,7 +294,7 @@ error message will be printed and semantic checking fails. Otherwise, the type
 of the expression result is the subtree of the only child of the root. Also, a
 type tree enables us to implement complex type nesting, which will be discussed
 later on.
-
+\subsection{\texttt{typedef} support}
 CIBIC has support for user-defined types, which are defined via the keyword
 ``\texttt{typedef}''.  However, ``\texttt{typedef}'' is notoriously difficult
 to deal with due to the ambiguity caused by the language design. For example,
@@ -288,7 +313,7 @@ for ``\texttt{typedef}'' statements, the parser will invoke
 ``\texttt{def\_enter(IN\_TYPEDEF)}'' to record the newly defined typename by
 adding an entry to a hash table. In the lexer, when a string token is being
 read, it invokes ``\texttt{is\_identifier}'' to make sure whether the string is
-an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}. 
+an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}.
 
 Figure demonstrates a very subtle use of \texttt{typedef}, which can be parsed perfectly by CIBIC.
 
@@ -297,11 +322,11 @@ Figure demonstrates a very subtle use of \texttt{typedef}, which can be parsed p
     \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
     \begin{minted}{c}
 /* It's quite common to define a shorthand `I' for `struct I'. */
-typedef struct I I; 
+typedef struct I I;
 /* Declaration of a function with parameter `a' of user-defined type `I'. */
 int incomp(I a);
 /* The definition of `I' is postponed. */
-struct I { 
+struct I {
     int i, j;
 };
 /* Function definition of previous declared one. */
@@ -315,14 +340,300 @@ int main() {
     incomp(i);
 }
 \end{minted}
-\caption {Code Snippet to Track Down Location}
+\caption {Typedef}
+\end{listing}
+\newpage
+\subsection{Complex Declaration and Function Pointer}
+With the help of type tree, CIBIC supports complex type declaration and function
+pointers. The code on the left side below shows declaration with different
+semantics. The dump information on the right shows the corresponding tree
+structures.
+
+\begin{listing}[H]
+    \centering
+    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+    \begin{minted}[linenos=true,firstnumber=1]{c}
+struct A {
+    int x, y;
+    struct B {
+        int i, j;
+    } b;
+    struct A *next;
+};
+
+int main() {
+    struct A a;
+    /* the follow types are distinctly different */
+    int a0[10][20]; /* two-dimensional array */
+    int (*a1)[20];  /* a pointer to array */
+    int *a2[20];    /* an array of pointers */
+    int **a3;       /* pointer to pointer */
+    /* pointer to a function */
+    int (*f)();
+    /* function declaration, not a variable */
+    int (*g(int ***e[10]))();
+    /* complex type casting is also supported */
+    f = (int (*)())(0x12345678);
+}
+    \end{minted}
+ \caption {Source Code Being Proceeded}
+\end{listing}
+\begin{listing}
+    \centering
+    \begin{BVerbatim}
+[func:{name:main}{size:-1}
+    {params:}
+    {local:
+        [var@83de610:f :: [ptr]->
+                [func:{name:}{size:-1}
+                    {params:}
+                    {local:}]->[int]],
+
+        [var@83de410:a3 :: [ptr]->[ptr]->[int]],
+        [var@83de230:a2 :: [arr:{len:20}{size:80}]->[ptr]->[int]],
+        [var@83de050:a1 :: [ptr]->[arr:{len:20}{size:-1}]->[int]],
+        [var@83dde70:a0 :: [arr:{len:10}{size:800}]->[arr:{len:20}{size:80}]->[int]],
+        [var@83ddb60:a ::
+            [struct@83dd950:{name:A}{size:20}{fields:
+                [var@83dd8c0:b ::
+                    [struct@83db640:{name:B}{size:8}{fields:
+                        [var@83dd6e0:i :: [int]],
+                        [var@83dd7c0:j :: [int]]}]],
+                [var@83db4d0:x :: [int]],
+                [var@83db5b0:y :: [int]],
+                [var@83dda60:next :: [ptr]->[struct@83dd950:{name:A}]
+]}]]}]->[int]
+
+    \end{BVerbatim}
+    \caption {Dump Info from CIBIC: Scope Stack}
 \end{listing}
 
+Accompanied by complex type declaration, complex type casting is also allowed in
+CIBIC. In the code above, an integer \texttt{0x12345678} is casted into a
+pointer to a function with empty parameter list returning an integer, and assign
+to function pointer f. Note that in order to deal with the form like
+``\texttt{(int (*)()}'', syntax description in ``\texttt{cibic.y}'' is rewritten
+according to the standard and made more general.
 
-\subsection{Complex Declaration and Function Pointer}
-\section{Intermadiate Representation}
+Function pointers are easy to implement in MIPS assembly. But their declarations
+could be more complex and esoteric than we expect it to be. Although these
+constructions are rarely used, the compilers that support function pointer are
+supposted to understand them. For example, ``\texttt{int (*g(int
+***e[10]))();}'' declares a function g which takes an array of pointers as
+parameters and returns a function pointer. The code below demonstrates a
+non-typical use of function pointer. It can be compiled correctly by CIBIC. When
+x is non-zero, the program prints ``i'm f'' five times, otherwise, prints ``i'm
+g''. Note that we make use of the language feature of C that the empty parameter
+list means uncertain number of parameters, so that f and g can pass func itself
+to the invocation of func.
+\begin{listing}[H]
+    \centering
+    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+    \begin{minted}{c}
+typedef void (*Func_t)();
+void f(Func_t func, int step) {
+    if (!step) return;
+    printf("i'm f\n");
+    func(func, step - 1);
+}
+/* void (*func)() has the same meaning as Func_t func */
+void g(void (*func)(), int step) {
+    if (!step) return;
+    printf("i'm g\n");
+    func(func, step - 1);
+}
+int main() {
+    void (*func)(void (*ifunc)(), int step);
+    int x = 1;
+    if (x) func = f;
+    else func = g;
+    func(func, 5);
+    return 0;
+}
+    \end{minted}
+    \caption {Self-ref function pointer}
+\end{listing}
+\section{Intermediate Representation}
+A good IR (intermediate representation) should be both easy to modify (or
+optimize) and convenient to be transformed into assembly. A typical bad design
+is to make up an IR that totally resembles assembly instructions. This does not
+make much sense because when IR almost looks like assembly, we actually do not
+need IR at all, even though this makes it easier to translate. Besides, if IR to
+assembly is a ``one-to-one correspondence'', we can not benefit much from the IR
+in the optimization, even suffer from debugging since one semantically clear
+operation may be splitted into several trival assembly-like IR instructions.
+
+In CIBIC, there are mainly three kinds of IR instructions: flow control,
+assignment and calculation. For example, \texttt{BEQ}, \texttt{BNE},
+\texttt{GOTO}, \texttt{RET}, and \texttt{CALL} are flow control instructions;
+\texttt{ARR}, \texttt{WARR}, \texttt{MOVE} are assignment instructions;
+\texttt{MUL}, \texttt{DIV}, \texttt{ADD}, \texttt{SUB}, etc. are calculation
+instructions. There are also a few special types of instructions, like
+\texttt{PUSH}, \texttt{LOAD}. \texttt{PUSH} indicates an argument is pushed to
+the stack. \texttt{LOAD} is just a ``pseudo-instruction'', it is only designed
+for helping the unification of SSA form because every variable needs to be
+defined somewhere. So local variables are parameters are first ``loaded'' at the
+beginning of a function. Therefore for some variables \texttt{LOAD} does not
+need to be translated into a de facto load instruction (for example, spilled
+variables). All kinds of instructions used in IR is shown in table.
+\begin{center}
+    \texttt {
+    \begin{longtable}{|r|c|c|c|l|}
+            OpCode  &  Dest.    &  Src. 1  &  Src. 2  &   Explanation \\  \hline
+            BEQ     &  block    &  cond    &  val     &   if (cond == val) goto block \\
+            BNE     &  block    &  cond    &  val     &   if (cond != val) goto block \\
+            GOTO    &  block    &  NULL    &  NULL    &   goto block \\
+            CALL    &  ret      &  func    &  NULL    &   ret = call func \\
+            RET     &  NULL     &  ret     &  NULL    &   return ret \\  \hline
+            PUSH    &  NULL     &  arg     &  NULL    &   push arg \\
+            LOAD    &  var      &  NULL    &  NULL    &   load var \\  \hline
+            ARR     &  var      &  arr     &  index   &   var = arr[index] \\
+            WARR    &  arr      &  var     &  index   &   arr[index] = var \\
+            MOVE    &  var1     &  var2    &  NULL    &   var1 = var2 \\  \hline
+            ADDR    &  var1     &  var2    &  NULL    &   var1 = addr var2 \\
+            MUL     &  res      &  var1    &  var2    &   res = var1 * var2 \\
+            DIV     &  res      &  var1    &  var2    &   res = var1 / var2 \\
+            MOD     &  res      &  var1    &  var2    &   res = var1 \% var2 \\
+            ADD     &  res      &  var1    &  var2    &   res = var1 + var2 \\
+            SUB     &  res      &  var1    &  var2    &   res = var1 - var2 \\
+            SHL     &  res      &  var1    &  var2    &   res = var1 << var2 \\
+            SHR     &  res      &  var1    &  var2    &   res = var1 >> var2 \\
+            AND     &  res      &  var1    &  var2    &   res = var1 \& var2 \\
+            XOR     &  res      &  var1    &  var2    &   res = var1 \^{} var2 \\
+             OR     &  res      &  var1    &  var2    &   res = var1 | var2 \\
+            NOR     &  res      &  var1    &  var2    &   res = var1 nor var2 \\
+             EQ     &  res      &  var1    &  var2    &   res = var1 == var2 \\
+             NE     &  res      &  var1    &  var2    &   res = var1 != var2 \\
+             LT     &  res      &  var1    &  var2    &   res = var1 < var2 \\
+             GT     &  res      &  var1    &  var2    &   res = var1 > var2 \\
+             LE     &  res      &  var1    &  var2    &   res = var1 <= var2 \\
+             GE     &  res      &  var1    &  var2    &   res = var1 >= var2 \\
+            NEG     &  res      &  var1    &  NULL    &   res = -var1 \\
+        \end{longtable}
+    }
+\end{center}
+
+Here are some remarks:
+\begin{enumerate}
+    \item Because C standard requires shortcuit of ``\texttt{\&\&}'' and
+        ``\texttt{||}'' operator, they are transformed into branches, will not
+        be in the IR.
+
+    \item Multi-dimensional arrays require a little more care. In C, all arrays
+        are treated as one-dimensional array in the end. For instance,
+        \texttt{a[2][3][4]} (\texttt{a} is declared as \texttt{int a[5][5][5]})
+        is transformed into \texttt{*(a + 2 * 100 + 3 * 20 + 4 * 4)}, so its IR,
+        for example could be:
+\begin{center}
+    \texttt{
+        \begin{tabular}{l}
+            t5 = a\_0 + 200 \\
+            t3 = t5 + 60 \\
+            b\_1 = t3[16] \\
+        \end{tabular}
+    }
+\end{center}
+\item Pointer dereference such as \texttt{a = *ptr} can be easily represented by
+    \texttt{a = ptr[0]}.
+\item Since structs and unions can not be entirely stored in a register, CIBIC
+    regard a instance of a struct or union as a pointer to it. Since the memory
+    offset of an attribute can be determined after semantics analysis, access to
+    a struct (or union) can be represented in the same way as array:
+    \begin{center}
+        \begin{minipage}{0.3\textwidth}
+            \begin{minted}{c}
+struct A {
+    struct B {
+        int i, j;
+    } b;
+    int x, y;
+} a, a2;
+int main() {
+    struct B b;
+    a.b.i = 1;
+    a.b.j = 2;
+    a.x = 3;
+    a.y = 4;
+    a2.b = b;
+    a.b = a2.b;
+}
+            \end{minted}
+        \end{minipage}
+        \begin{minipage}{0.3\textwidth}
+            \begin{BVerbatim}
+t1 = a_0 + 8
+t1[4] = 1
+t4 = t1
+t4[0] = 2
+a_0[4] = 3
+a_0[0] = 4
+a2_0[8] = b_0
+t12 = a2_0 + 8
+a_0[8] = t12
+        \end{BVerbatim}
+        \end{minipage}
+    \end{center}
+    The only problem left is the ambiguity. If we regard a instance of a struct
+    as a pointer to it, how could we distinguish a struct copy assignment from
+    a struct pointer assignment? The answer is: this is not an ambiguity at
+    all, since all the type information of operands are preserved, we can
+    easily tell the difference by looking at type information. So actually, the
+    printed IR above does not contain all the information, it is just a human
+    readable form to easy our debug. The underlying type information is
+    preserved in IR data structure and passed to the translator so can be used
+    to guide the final translation. Of course, the code above does produce
+    correct result compiled by CIBIC.
+\end{enumerate}
 \subsection{Single Static Assignment Form}
+CIBIC makes good use of SSA (Single Static Assignment) form. SSA form is a
+property of an IR, which says that each variable is assigned \textbf{exactly
+once}. The property can simplify the liveness analysis and optimization, since
+all variables are assigned only once so the ``define-use'' relationship is much
+clearer that the original IR.
+
+However, it is not trival to convert an IR to SSA form, mainly because of the
+``merging issue''. In figure, the control flow branches at the if statement and
+merges again when getting out of if. The question is, should we use
+\texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x + 1} statement? The answer
+is, it is only known at runtime. So a ``phi-function'' \texttt{x\_3 = phi(x\_1,
+x\_2)} will be inserted at the merge point to wrap two possibilities.
+Unfortunately, not only does this circumstance appear in if statement, but also
+exist in loops. How do we know if we should add an phi-function for certain
+variable? Luckily, we can just insert phi-functions at dominance frontiers in
+the control flow graph.
 \subsection{Phi-functions}
+There are several ways of computing dominance frontiers of a control flow graph.
+But they all first construct the dominator tree and then deduce the frontiers.
+Well-known algorithms for finding out dominator tree are: straightforward
+iterative algorithm and Lengauer-Tarjan algorithm. The improved version on
+latter algorithm provides with a nearly linear time complexity $O(m \alpha(m,
+n))$. However, according to the research done by L. Georgiagids, R.  F. Werneck,
+R. E. Tarjan et al, practical performance of iterative algorithm is acceptable
+and even better than sophisticated LT algorithm. CIBIC adopts a variant of the
+original iterative algorithm. It is faster than LT algorithm on real programs
+and easy to implement.
 \subsection{Register Allocation}
+CIBIC uses linear scan register allocation to allocate registers \emph{before
+translating out of SSA form}. This method is different from traditional one and
+can make use of lifetime holes and instruction weights to improve the quality of
+the allocation.
+
+To run the allocation algorithm, we shall first compute live intervals.
+Unfortunately, the pseudo-code provided in the paper does not take the loop
+cases into account. In another paper, I found the correct algorithm for
+construction of live intervals.
+
+In linear scan algorithm described in the paper, we should maintain four sets:
+unhandled, handled, active, inactive. In the implementation, we do not need to
+maintain handled set because once a variable is handled, we can just evict it
+from the current active or inactive set and there is no need to put it again
+into another handled set. Besides, the unhandled set can be implemented as a
+sorted array, because intervals are picked in increasing order of their start
+points. Therefore, in CIBIC, only active and inactive sets are maintain by
+double-linked lists with a sentinel node. The double-linked design makes it easy
+to remove an interval from the set and the sentinel node helps us to put it into
+another set on the fly. The algorithm also requires a pre-calculated weight of
+each interval (computed from the accesses to the interval) which helps to decide
+the spilled variable.
 \section{Performance and Optimization}
 \end{document}

@@ -1,3 +1,4 @@
+#include <cstdio>
 typedef void (*Func_t)();
 void f(Func_t func, int step) {
     if (!step) return;
