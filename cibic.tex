@@ -118,7 +118,7 @@ The parsing process is also an AST (Abstrct Syntax Tree) construction process.
 By calling the corresponding functions, the generated parser create tree nodes
 and merge them into subtrees. The major issue here is how to design a proper
 data structure to represent and maintain the AST. In CIBIC, all nodes in an AST
-are instances of struct ``CNode'' in figure.
+are instances of struct ``CNode'' in figure \ref{fig:struct_cnode}.
 \begin{figure}[H]
     \centering
     \texttt {
@@ -142,6 +142,7 @@ are instances of struct ``CNode'' in figure.
         \end{tabular}
     }
     \caption{The Structure of a CNode instance}
+    \label{fig:struct_cnode}
 \end{figure}
 Since a node may have variable number of children, the most common and
 efficient approach is to implement a left-child right-sibling binary tree. The
@@ -181,7 +182,8 @@ very important concept in C. It seems to be an orthogonal concept to name
 spaces.
 
 Considering these two concepts, CIBIC implements a struct named
-``\texttt{CScope}'' to maintain all the information as shown in figure.
+``\texttt{CScope}'' to maintain all the information as shown in figure
+\ref{fig:struct_cscope}.
 \begin{figure}[H]
     \centering
     \texttt {
@@ -202,6 +204,7 @@ Considering these two concepts, CIBIC implements a struct named
         \end{tabular}
     }
     \caption{The Structure of a CScope instance}
+    \label{fig:struct_cscope}
 \end{figure}
 
 Note that ``\texttt{top}'' points to an instance of ``\texttt{CSNode}'' which
@@ -213,7 +216,7 @@ the outer scope which is another instance of ``\texttt{CSNode}''. As for
 each struct or union, there is also a pointer to ``\texttt{CTable}'' stores all
 field names. ``\texttt{CTable}'' is an open addressing hash table
 containing nodes of the type ``\texttt{CTNode}''. The structure of each node is
-depicted in figure.
+depicted in figure \ref{fig:struct_ctnode}.
 
 \begin{figure}[H]
     \centering
@@ -231,6 +234,7 @@ depicted in figure.
         \end{tabular}
     }
     \caption{The Structure of a CTNode instance}
+    \label{fig:struct_ctnode}
 \end{figure}
 
 Thanks to the level information kept in each ``\texttt{CTNode}'', we do not
@@ -248,10 +252,11 @@ different scopes, the symbol defined at the inner most is always ahead of
 others in the chain of the table because it is the most recently added one. So,
 for lookups, CIBIC just need to return the first node having the same name in
 the chain, which is very time-efficient. At last, when a scope ends, CIBIC
-scans the whole ``\texttt{symlist}'' of the top scope frame, and tries to
-remove these symbols from the table. Figure presents the content of the scope
-stack when the analysis proceeds into the inner most declaration of a. See
-chains with hash code 0097 and 0098.
+scans the whole ``\texttt{symlist}'' of the top scope frame, and tries to remove
+these symbols from the table. Figure \ref{fig:nested_scope} presents the content
+of the scope stack when the analysis proceeds into the inner most declaration of
+a. Chains with hash code 0097 and 0098 in figure \ref{fig:scope_stack} reveals
+the underlying mechanism.
 \begin{figure}[H]
 %    \centering
     \begin{minipage}{0.35\textwidth}
@@ -269,7 +274,8 @@ int main() {
     }
 }
     \end{minted}
- \caption {Source Code Being Proceeded}
+    \caption {Nested Scope Example}
+    \label{fig:nested_scope}
 \end{minipage}
 %    \centering
     \begin{minipage}{0.5\textwidth}
@@ -288,7 +294,8 @@ int main() {
     [0908]->[memcpy@7484060:0]
     [0971]->[char@747e9f0:0]
     \end{BVerbatim}
-    \caption {Dump Info from CIBIC: Scope Stack}
+    \caption {CIBIC Dump: Scope Stack}
+    \label{fig:scope_stack}
 \end{minipage}
 \end{figure}
 
@@ -299,8 +306,14 @@ type). However, C supports two powerful type aggregation: arrays and structures
 (unions), and also supports an indirect access tool: pointer. This makes the
 type system much more complex and usable in practice. CIBIC uses the concept
 ``type tree'' to organize types. All basic types are the leaves of a type tree,
-while aggregate types and pointers are the intermediate nodes. Figure shows a
-typical type tree of a C struct.
+while aggregate types and pointers are the intermediate nodes. Figure
+\ref{fig:type_tree} shows a typical type tree of a C struct.
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.5]{tree.png}
+    \caption{A Typical Type Tree}
+\end{figure}
 
 A type tree is good at preserving type hierarchy info which may be extremely
 useful in type checking. For example, when checking a expression \texttt{*a},
@@ -330,7 +343,7 @@ adding an entry to a hash table. In the lexer, when a string token is being
 read, it invokes ``\texttt{is\_identifier}'' to make sure whether the string is
 an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}.
 
-Figure demonstrates a very subtle use of \texttt{typedef}, which can be parsed perfectly by CIBIC.
+Listing \ref{list:typedef} demonstrates a very subtle use of \texttt{typedef}, which can be parsed perfectly by CIBIC.
 
 \begin{listing}[H]
     \centering
@@ -355,14 +368,18 @@ int main() {
     incomp(i);
 }
 \end{minted}
-\caption {Typedef}
+\caption {\texttt{typedef} Example}
+\label {list:typedef}
 \end{listing}
 \newpage
 \subsection{Complex Declaration and Function Pointer}
 With the help of type tree, CIBIC supports complex type declaration and function
-pointers. The code on the left side below shows declaration with different
-semantics. The dump information on the right shows the corresponding tree
-structures.
+pointers. The code below shows declaration with different semantics. The
+subsequent dump information shows the corresponding type trees. It is worth
+noting that three different delcarations of ``arrays'' have inherently
+different meaning. Also the code shows us a very complex declaration of a
+function \texttt{func}. It is a selector which returns one of the pointers to a
+function in its parameters.
 
 \begin{listing}[H]
     \centering
@@ -401,9 +418,9 @@ int main() {
     printf("%d %d\n", f == main, h == main);
 }
     \end{minted}
- \caption {Source Code Being Proceeded}
+ \caption {Complex Declaration Example}
 \end{listing}
-\begin{listing}[H]
+\begin{figure}[H]
     \centering
     \begin{BVerbatim}
 [func:{name:func}{size:-1}
@@ -449,14 +466,14 @@ int main() {
                         [struct@735da40:{name:A}]]}]]}]->[int]
 
     \end{BVerbatim}
-    \caption {Dump Info from CIBIC: Scope Stack}
-\end{listing}
+    \caption {CIBIC Dump: Complex Declaration}
+\end{figure}
 
 Accompanied by complex type declaration, complex type casting is also allowed in
 CIBIC. In the code above, an integer \texttt{0x12345678} is casted into a
 pointer to a function with empty parameter list returning an integer, and assign
 to function pointer f. Note that in order to deal with the form like
-``\texttt{(int (*)()}'', syntax description in ``\texttt{cibic.y}'' is rewritten
+``\texttt{(int (*)())}'', syntax description in ``\texttt{cibic.y}'' is rewritten
 according to the standard and made more general.
 
 Function pointers are easy to implement in MIPS assembly. But their declarations
@@ -495,7 +512,7 @@ int main() {
     return 0;
 }
     \end{minted}
-    \caption {Self-ref function pointer}
+    \caption {Self-reference function pointer}
 \end{listing}
 \section{Intermediate Representation}
 A good IR (intermediate representation) should be both easy to modify (or
@@ -629,7 +646,7 @@ a_0[8] = t12
     correct result compiled by CIBIC.
 \end{enumerate}
 
-\begin{figure}[H]
+\begin{listing}[H]
     \centering
     \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
     \begin{minted}{c}
@@ -648,8 +665,8 @@ mark_insts();
 build_intervals();
 register_alloc();
     \end{minted}
-    \caption{Workflow of CIBIC IR}
-\end{figure}
+    \caption{Workflow of IR in CIBIC}
+\end{listing}
 
 \subsection{Single Static Assignment Form}
 CIBIC makes good use of SSA (Single Static Assignment) form. SSA form is a
@@ -659,15 +676,15 @@ all variables are assigned only once so the ``define-use'' relationship is much
 clearer that the original IR.
 
 However, it is not trival to convert an IR to SSA form, mainly because of the
-``merging issue''. In figure, the control flow branches at the if statement and
-merges again when getting out of if. The question is, should we use
-\texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x + 1} statement? The answer
-is, it is only known at runtime. So a ``phi-function'' \texttt{x\_3 = phi(x\_1,
-x\_2)} will be inserted at the merge point to wrap two possibilities.
-Unfortunately, not only does this circumstance appear in if statement, but also
-exist in loops. How do we know if we should add an phi-function for certain
-variable? Luckily, we can just insert phi-functions at dominance frontiers in
-the control flow graph.
+``merging issue''. In figure \ref{fig:phi_function}, the control flow branches
+at the if statement and merges again when getting out of if. The question is,
+should we use \texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x + 1}
+statement? The answer is, it is only known at runtime. So a ``phi-function''
+\texttt{x\_3 = phi(x\_1, x\_2)} will be inserted at the merge point to wrap two
+possibilities.  Unfortunately, not only does this circumstance appear in if
+statement, but also exist in loops. How do we know if we should add an
+phi-function for certain variable? Luckily, we can just insert phi-functions at
+dominance frontiers in the control flow graph.
 \subsection{Phi-functions}
 There are several ways of computing dominance frontiers of a control flow graph.
 But they all first construct the dominator tree and then deduce the frontiers.
@@ -679,6 +696,17 @@ R. E. Tarjan et al, practical performance of iterative algorithm is acceptable
 and even better than sophisticated LT algorithm. CIBIC adopts a variant of the
 original iterative algorithm. It is faster than LT algorithm on real programs
 and easy to implement.
+\begin{figure}
+    \centering
+    \begin{minipage}{0.4\textwidth}
+        \includegraphics[scale=0.5]{phi1.png}
+    \end{minipage}
+    \begin{minipage}{0.4\textwidth}
+        \includegraphics[scale=0.5]{phi2.png}
+    \end{minipage}
+    \caption{Before and After Inserting Phi-function}
+    \label{fig:phi_function}
+\end{figure}
 \subsection{Register Allocation}
 CIBIC uses linear scan register allocation to allocate registers \emph{before
 translating out of SSA form}. This method is different from traditional one and
