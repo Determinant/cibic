@@ -149,6 +149,8 @@ typedef struct CFuncIR CFuncIR;
 typedef CFuncIR *CFuncIR_t;
 struct CFuncIR {
     int gbbase;
+    CBlock_t blks[MAX_BLOCK];
+    int ord[MAX_BLOCK];
     CBlock_t entry;
     COList_t defs;
     CType_t func;
