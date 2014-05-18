@@ -97,6 +97,21 @@ char linebuff[MAX_LINEBUFF], *lptr = linebuff;
 \end{minted}
 \caption {Code Snippet to Track Down Location}
 \end{listing}
+\subsection{Friendly Error Report}
+CIBIC generates friendly and accurate error report. The corresponding line and column number are printed. Besides, if it is an syntax error, CIBIC will print the context where the error occurs just like clang.
+\begin{figure}[H]
+    \centering
+\begin{BVerbatim}
+2:28: error: syntax error, unexpected ';', expecting ',' or ')'
+    int this_is_an_example(;
+                           ^
+
+2:13: error: syntax error, unexpected identifier
+    typedef a
+            ^
+\end{BVerbatim}
+\caption {Some Error Report Examples}
+\end{figure}
 
 \section{Semantic Analysis and Implementation}
 The parsing process is also an AST (Abstrct Syntax Tree) construction process.
