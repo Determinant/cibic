@@ -115,7 +115,7 @@ CIBIC generates friendly and accurate error report. The corresponding line and c
 
 \section{Semantic Analysis and Implementation}
 The parsing process is also an AST (Abstrct Syntax Tree) construction process.
-By calling the corresponding functions, the generated parser create tree nodes
+By calling the corresponding functions, the generated parser creates tree nodes
 and merge them into subtrees. The major issue here is how to design a proper
 data structure to represent and maintain the AST. In CIBIC, all nodes in an AST
 are instances of struct ``CNode'' in figure \ref{fig:struct_cnode}.
@@ -249,13 +249,13 @@ added to ``\texttt{CScope}'', CIBIC adds the symbol to one of the tables
 ``\texttt{symlist}'' of the top of the scope stack. The most elegant
 characteristics of open addressing hash tables is, for the same name appears in
 different scopes, the symbol defined at the inner most is always ahead of
-others in the chain of the table because it is the most recently added one. So,
+others in the chain of the table because it is the most recently added. So,
 for lookups, CIBIC just need to return the first node having the same name in
 the chain, which is very time-efficient. At last, when a scope ends, CIBIC
 scans the whole ``\texttt{symlist}'' of the top scope frame, and tries to remove
 these symbols from the table. Figure \ref{fig:nested_scope} presents the content
 of the scope stack when the analysis proceeds into the inner most declaration of
-a. Chains with hash code 0097 and 0098 in figure \ref{fig:scope_stack} reveals
+a. Chains with hash code 0097 and 0098 in figure \ref{fig:scope_stack} reveal
 the underlying mechanism.
 \begin{figure}[H]
 %    \centering
@@ -313,6 +313,7 @@ while aggregate types and pointers are the intermediate nodes. Figure
     \centering
     \includegraphics[scale=0.5]{tree.png}
     \caption{A Typical Type Tree}
+    \label{fig:type_tree}
 \end{figure}
 
 A type tree is good at preserving type hierarchy info which may be extremely
@@ -339,7 +340,7 @@ just read a type specifier, before it moves on, it invokes
 subsequent string token must be an identifier instead of a type specifier. As
 for ``\texttt{typedef}'' statements, the parser will invoke
 ``\texttt{def\_enter(IN\_TYPEDEF)}'' to record the newly defined typename by
-adding an entry to a hash table. In the lexer, when a string token is being
+adding an entry to a hash table. As for the lexer, when a string token is being
 read, it invokes ``\texttt{is\_identifier}'' to make sure whether the string is
 an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}.
 
@@ -519,10 +520,11 @@ A good IR (intermediate representation) should be both easy to modify (or
 optimize) and convenient to be transformed into assembly. A typical bad design
 is to make up an IR that totally resembles assembly instructions. This does not
 make much sense because when IR almost looks like assembly, we actually do not
-need IR at all, even though this makes it easier to translate. Besides, if IR to
-assembly is a ``one-to-one correspondence'', we can not benefit much from the IR
-in the optimization, even suffer from debugging since one semantically clear
-operation may be splitted into several trival assembly-like IR instructions.
+need IR at all, even though this makes it easier to translate. Moreover, if IR
+to assembly is a ``one-to-one correspondence'', we can not benefit much from
+the IR in the optimization, even suffer from debugging since one semantically
+clear operation may be splitted into several confusing assembly-like IR
+instructions.
 
 In CIBIC, there are mainly three kinds of IR instructions: flow control,
 assignment and calculation. For example, \texttt{BEQ}, \texttt{BNE},
@@ -578,7 +580,7 @@ Here are some remarks:
 \begin{enumerate}
     \item Because C standard requires shortcuit of ``\texttt{\&\&}'' and
         ``\texttt{||}'' operator, they are transformed into branches, will not
-        be in the IR.
+        be shown in the IR.
 
     \item Multi-dimensional arrays require a little more care. In C, all arrays
         are treated as one-dimensional array in the end. For instance,
@@ -682,13 +684,13 @@ should we use \texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x + 1}
 statement? The answer is, it is only known at runtime. So a ``phi-function''
 \texttt{x\_3 = phi(x\_1, x\_2)} will be inserted at the merge point to wrap two
 possibilities.  Unfortunately, not only does this circumstance appear in if
-statement, but also exist in loops. How do we know if we should add an
-phi-function for certain variable? Luckily, we can just insert phi-functions at
-dominance frontiers in the control flow graph.
+statement, but also exist in loops. How do we know where we should add an
+phi-function for certain variable? The answer is we can just insert
+phi-functions at dominance frontiers in the control flow graph.
 \subsection{Phi-functions}
 There are several ways of computing dominance frontiers of a control flow graph.
 But they all first construct the dominator tree and then deduce the frontiers.
-Well-known algorithms for finding out dominator tree are: straightforward
+Well-known algorithms for finding out the dominator tree are the straightforward
 iterative algorithm and Lengauer-Tarjan algorithm. The improved version on
 latter algorithm provides with a nearly linear time complexity $O(m \alpha(m,
 n))$. However, according to the research done by L. Georgiagids, R.  F. Werneck,
@@ -719,16 +721,16 @@ cases into account. In another paper, I found the correct algorithm for
 construction of live intervals.
 
 In linear scan algorithm described in the paper, we should maintain four sets:
-unhandled, handled, active, inactive. In the implementation, we do not need to
-maintain handled set because once a variable is handled, we can just evict it
-from the current active or inactive set and there is no need to put it again
-into another handled set. Besides, the unhandled set can be implemented as a
-sorted array, because intervals are picked in increasing order of their start
-points. Therefore, in CIBIC, only active and inactive sets are maintain by
-double-linked lists with a sentinel node. The double-linked design makes it easy
-to remove an interval from the set and the sentinel node helps us to put it into
-another set on the fly. The algorithm also requires a pre-calculated weight of
-each interval (computed from the accesses to the interval) which helps to decide
-the spilled variable.
+unhandled, handled, active, inactive. However, for the implementation, we do not
+need to maintain handled set because once a variable is handled, we can just
+evict it from the current active or inactive set and there is no need to put it
+again into another handled set. Besides, the unhandled set can be implemented
+as a sorted array, because intervals are picked in increasing order of their
+start points. Therefore, in CIBIC, only active and inactive sets are maintained
+by double-linked lists with sentinel nodes. The double-linked design makes it
+easy to remove an interval from the set and the sentinel node helps us to move
+to another set conveniently. The algorithm also requires a pre-calculated
+weight of each interval (computed from the accesses to the interval) which
+helps to decide the spilled variable.
 \section{Performance and Optimization}
 \end{document}
