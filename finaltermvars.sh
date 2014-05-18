@@ -1,2 +1,2 @@
-cp ../lib.s .
+cp lib.s bin
 export CCHK="./cibic"
