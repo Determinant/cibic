@@ -361,6 +361,12 @@ struct A {
     struct A *next;
 };
 
+/* a function that returns a pointer to function */
+int (*func(int flag, int (*f)(), int (*g)()))() {
+    if (flag) return f;
+    else return g;
+}
+
 int main() {
     struct A a;
     /* the follow types are distinctly different */
@@ -369,40 +375,63 @@ int main() {
     int *a2[20];    /* an array of pointers */
     int **a3;       /* pointer to pointer */
     /* pointer to a function */
-    int (*f)();
+    int (*f)(), (*h)();
     /* function declaration, not a variable */
     int (*g(int ***e[10]))();
     /* complex type casting is also supported */
     f = (int (*)())(0x12345678);
+    f = func(1, f, main); /* f */
+    h = func(0, f, main); /* main */
+    /* 0 1 */
+    printf("%d %d\n", f == main, h == main);
 }
     \end{minted}
  \caption {Source Code Being Proceeded}
 \end{listing}
-\begin{listing}
+\begin{listing}[H]
     \centering
     \begin{BVerbatim}
-[func:{name:main}{size:-1}
-    {params:}
-    {local:
-        [var@83de610:f :: [ptr]->
+[func:{name:func}{size:-1}
+    {params:
+        [var@735fd60:flag :: [int]],
+        [var@735ff00:f :: [ptr]->
                 [func:{name:}{size:-1}
                     {params:}
                     {local:}]->[int]],
+        [var@7360080:g :: [ptr]->
+                [func:{name:}{size:-1}
+                    {params:}
+                    {local:}]->[int]]}
+    {local:}]->[ptr]->
+        [func:{name:}{size:-1}
+            {params:}
+            {local:}]->[int]
 
-        [var@83de410:a3 :: [ptr]->[ptr]->[int]],
-        [var@83de230:a2 :: [arr:{len:20}{size:80}]->[ptr]->[int]],
-        [var@83de050:a1 :: [ptr]->[arr:{len:20}{size:-1}]->[int]],
-        [var@83dde70:a0 :: [arr:{len:10}{size:800}]->[arr:{len:20}{size:80}]->[int]],
-        [var@83ddb60:a ::
-            [struct@83dd950:{name:A}{size:20}{fields:
-                [var@83dd8c0:b ::
-                    [struct@83db640:{name:B}{size:8}{fields:
-                        [var@83dd6e0:i :: [int]],
-                        [var@83dd7c0:j :: [int]]}]],
-                [var@83db4d0:x :: [int]],
-                [var@83db5b0:y :: [int]],
-                [var@83dda60:next :: [ptr]->[struct@83dd950:{name:A}]
-]}]]}]->[int]
+[func:{name:main}{size:-1}
+    {params:}
+    {local:
+        [var@7360d70:h :: [ptr]->
+                [func:{name:}{size:-1}
+                    {params:}
+                    {local:}]->[int]],
+        [var@7360c00:f :: [ptr]->
+                [func:{name:}{size:-1}
+                    {params:}
+                    {local:}]->[int]],
+        [var@7360a00:a3 :: [ptr]->[ptr]->[int]],
+        [var@7360820:a2 :: [arr:{len:20}{size:80}]->[ptr]->[int]],
+        [var@7360640:a1 :: [ptr]->[arr:{len:20}{size:-1}]->[int]],
+        [var@7360460:a0 :: [arr:{len:10}{size:800}]->[arr:{len:20}{size:80}]->[int]],
+        [var@7360110:a :: 
+            [struct@735da40:{name:A}{size:20}{fields:
+                [var@735d9b0:b :: 
+                    [struct@735b730:{name:B}{size:8}{fields:
+                        [var@735d7d0:i :: [int]],
+                        [var@735d8b0:j :: [int]]}]],
+                [var@735b5c0:x :: [int]],
+                [var@735b6a0:y :: [int]],
+                [var@735db50:next :: [ptr]->
+                        [struct@735da40:{name:A}]]}]]}]->[int]
 
     \end{BVerbatim}
     \caption {Dump Info from CIBIC: Scope Stack}

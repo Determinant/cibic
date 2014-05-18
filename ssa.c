@@ -339,8 +339,6 @@ void ssa_generate(int quiet) {
         cf->defs = defs;
         cf->entry = entry;
         cf->next = func_ir;
-        memmove(cf->blks, blks);
-        memmove(cf->ord, ord);
         func_ir = cf;
         gbbase += bcnt;
         bcnt = 0;
