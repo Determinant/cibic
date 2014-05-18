@@ -1414,7 +1414,7 @@ int intersect(int b1, int b2) {
     return b1;
 }
 
-void calc_dominant_frontier(void) {
+void calc_dominance_frontier(void) {
     int i;
     int ch = 1;
     ocnt = 0;
@@ -2706,7 +2706,7 @@ void ssa_func(CType_t func) {
     }
     cpset_destroy(avs);
     cpset_destroy(vs);
-    calc_dominant_frontier();
+    calc_dominance_frontier();
     /* build SSA */
     insert_phi(vars);
     renaming_vars(oprs);

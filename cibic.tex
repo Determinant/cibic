@@ -584,6 +584,29 @@ a_0[8] = t12
     to guide the final translation. Of course, the code above does produce
     correct result compiled by CIBIC.
 \end{enumerate}
+
+\begin{figure}[H]
+    \centering
+    \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+    \begin{minted}{c}
+calc_dominance_frontier();
+/* build SSA */
+insert_phi(vars);
+renaming_vars(oprs);
+/* optimization on SSA */
+const_propagation();
+subexp_elimination();
+const_propagation();
+strength_reduction();
+deadcode_elimination();
+/* out of SSA */
+mark_insts();
+build_intervals();
+register_alloc();
+    \end{minted}
+    \caption{Workflow of CIBIC IR}
+\end{figure}
+
 \subsection{Single Static Assignment Form}
 CIBIC makes good use of SSA (Single Static Assignment) form. SSA form is a
 property of an IR, which says that each variable is assigned \textbf{exactly
