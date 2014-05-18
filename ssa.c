@@ -327,10 +327,11 @@ void ssa_func_print(CBlock_t p) {
         cblock_print(p);
 }
 void ssa_func(CType_t);
-void ssa_generate(int quiet) {
+void ssa_generate(int q) {
     CTList_t f;
     CFuncIR_t cf;
     func_ir = NULL;
+    quiet = q;
     for (f = funcs; f; f = f->next)
     {
         cf = NEW(CFuncIR);
