@@ -2145,7 +2145,7 @@ void const_propagation(void) {
     int i;
     for (i = bcnt - 1; i >= 0; i--)
     {
-        CBlock_t b = blks[vis[i]];
+        CBlock_t b = blks[ord[i]];
         CInst_t i, ni, ih = b->insts;
         for (i = ih->next; i != ih; i = ni)
         {
@@ -2282,7 +2282,7 @@ void strength_reduction(void) {
     int call_cnt = 0;
     for (i = bcnt - 1; i >= 0; i--)
     {
-        CBlock_t b = blks[vis[i]];
+        CBlock_t b = blks[ord[i]];
         CInst_t i, ni, ih = b->insts;
         for (i = ih->next; i != ih; i = ni)
         {
@@ -2615,7 +2615,7 @@ void deadcode_elimination() {
     int i;
     for (i = bcnt - 1; i >= 0; i--)
     {
-        CBlock_t b = blks[vis[i]];
+        CBlock_t b = blks[ord[i]];
         CInst_t i, ih = b->insts;
         for (i = ih->next; i != ih; i = i->next)
         {
@@ -2626,7 +2626,7 @@ void deadcode_elimination() {
     }
     for (i = bcnt - 1; i >= 0; i--)
     {
-        CBlock_t b = blks[vis[i]];
+        CBlock_t b = blks[ord[i]];
         CInst_t i, ih = b->insts;
         for (i = ih->next; i != ih; i = i->next)
             if (i->op != CALL && i->dest && i->dest->kind == TMP && !i->dest->dep)
