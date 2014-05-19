@@ -98,7 +98,9 @@ char linebuff[MAX_LINEBUFF], *lptr = linebuff;
 \caption {Code Snippet to Track Down Location}
 \end{listing}
 \subsection{Friendly Error Report}
-CIBIC generates friendly and accurate error report. The corresponding line and column number are printed. Besides, if it is an syntax error, CIBIC will print the context where the error occurs just like clang.
+CIBIC generates friendly and accurate error report. The corresponding line and
+column number are printed. Besides, if it is an syntax error, CIBIC will print
+the context where the error occurs just like clang.
 \begin{figure}[H]
     \centering
 \begin{BVerbatim}
@@ -344,7 +346,8 @@ adding an entry to a hash table. As for the lexer, when a string token is being
 read, it invokes ``\texttt{is\_identifier}'' to make sure whether the string is
 an \texttt{IDENTIFIER} or a \texttt{USER\_TYPE}.
 
-Listing \ref{list:typedef} demonstrates a very subtle use of \texttt{typedef}, which can be parsed perfectly by CIBIC.
+Listing \ref{list:typedef} demonstrates a very subtle use of \texttt{typedef},
+which can be parsed perfectly by CIBIC.
 
 \begin{listing}[H]
     \centering
@@ -374,13 +377,19 @@ int main() {
 \end{listing}
 \newpage
 \subsection{Complex Declaration and Function Pointer}
-With the help of type tree, CIBIC supports complex type declaration and function
-pointers. The code below shows declaration with different semantics. The
-subsequent dump information shows the corresponding type trees. It is worth
-noting that three different delcarations of ``arrays'' have inherently
-different meaning. Also the code shows us a very complex declaration of a
-function \texttt{func}. It is a selector which returns one of the pointers to a
-function in its parameters.
+With the help of type tree, CIBIC supports complex type declaration and
+function pointers. The code below shows declaration with different semantics.
+The subsequent dump information shows the corresponding type trees. The
+hexidecimal value after ``\texttt{@}'' is the memory address of corresponding
+instance in the implementation. For example, local variable \texttt{a} is an
+instance of struct whose address is \texttt{735da40}, and \texttt{next} field
+of \texttt{struct A} also points to the type with the same address. In fact,
+the address of a struct type instance is regarded as its unique id in CIBIC.
+This guarantees that the type tree is correctly structured as shown in figure
+\ref{fig:type_tree}. It is also worth noting that three different delcarations
+of ``arrays'' have inherently different meaning. Also the code shows us a very
+complex declaration of a function \texttt{func}. It is a selector which returns
+one of the pointers to a function in its parameters.
 
 \begin{listing}[H]
     \centering
@@ -688,16 +697,17 @@ statement, but also exist in loops. How do we know where we should add an
 phi-function for certain variable? The answer is we can just insert
 phi-functions at dominance frontiers in the control flow graph.
 \subsection{Phi-functions}
-There are several ways of computing dominance frontiers of a control flow graph.
-But they all first construct the dominator tree and then deduce the frontiers.
-Well-known algorithms for finding out the dominator tree are the straightforward
-iterative algorithm and Lengauer-Tarjan algorithm. The improved version on
-latter algorithm provides with a nearly linear time complexity $O(m \alpha(m,
-n))$. However, according to the research done by L. Georgiagids, R.  F. Werneck,
-R. E. Tarjan et al, practical performance of iterative algorithm is acceptable
-and even better than sophisticated LT algorithm. CIBIC adopts a variant of the
-original iterative algorithm. It is faster than LT algorithm on real programs
-and easy to implement.
+There are several ways of computing dominance frontiers of a control flow
+graph.  But they all first construct the dominator tree and then deduce the
+frontiers.  Well-known algorithms for finding out the dominator tree are the
+straightforward iterative algorithm and Lengauer-Tarjan algorithm. The improved
+version on latter algorithm provides with a nearly linear time complexity $O(m
+\alpha(m, n))$. However, according to the research \cite{tarjan06} done by L.
+Georgiagids, R.  F. Werneck, R. E. Tarjan et al, practical performance of
+iterative algorithm is acceptable and even better than sophisticated LT
+algorithm. CIBIC adopts a variant \cite{cooper01} of the original iterative
+algorithm. It is faster than LT algorithm on real programs and easy to
+implement.
 \begin{figure}
     \centering
     \begin{minipage}{0.4\textwidth}
@@ -710,27 +720,47 @@ and easy to implement.
     \label{fig:phi_function}
 \end{figure}
 \subsection{Register Allocation}
-CIBIC uses linear scan register allocation to allocate registers \emph{before
+CIBIC uses linear scan register allocation \cite{moe02} to allocate registers \emph{before
 translating out of SSA form}. This method is different from traditional one and
 can make use of lifetime holes and instruction weights to improve the quality of
 the allocation.
 
 To run the allocation algorithm, we shall first compute live intervals.
-Unfortunately, the pseudo-code provided in the paper does not take the loop
-cases into account. In another paper, I found the correct algorithm for
-construction of live intervals.
+Unfortunately, the pseudo-code provided in the paper \cite{moe02} does not take
+the loop cases into account. In another paper \cite{wimmer10}, I found the
+correct algorithm for coping with loops. Unfortunately, the pseudo-code in two
+papers are written in different forms and have different concepts in some
+details. So I learned from both of them and got my own algorithm (almost like
+the one in paper \cite{moe02}).
 
-In linear scan algorithm described in the paper, we should maintain four sets:
-unhandled, handled, active, inactive. However, for the implementation, we do not
-need to maintain handled set because once a variable is handled, we can just
-evict it from the current active or inactive set and there is no need to put it
-again into another handled set. Besides, the unhandled set can be implemented
-as a sorted array, because intervals are picked in increasing order of their
-start points. Therefore, in CIBIC, only active and inactive sets are maintained
-by double-linked lists with sentinel nodes. The double-linked design makes it
-easy to remove an interval from the set and the sentinel node helps us to move
-to another set conveniently. The algorithm also requires a pre-calculated
-weight of each interval (computed from the accesses to the interval) which
-helps to decide the spilled variable.
+In linear scan algorithm described in paper \cite{moe02}, we should maintain
+four sets: unhandled, handled, active, inactive. However, for the
+implementation, we do not need to maintain handled set because once a variable
+is handled, we can just evict it from the current active or inactive set and
+there is no need to put it again into another handled set. Besides, the
+unhandled set can be implemented as a sorted array, because intervals are
+picked in increasing order of their start points. Therefore, in CIBIC, only
+active and inactive sets are maintained by double-linked lists with sentinel
+nodes. The double-linked design makes it easy to remove an interval from the
+set and the sentinel node helps us to move to another set conveniently. The
+algorithm also requires a pre-calculated weight of each interval (computed from
+the accesses to the interval) which helps to decide the spilled variable.
 \section{Performance and Optimization}
+\begin{thebibliography}{9}
+    \bibitem{tarjan06}
+        Georgiadis, Loukas, Robert Endre Tarjan, and Renato Fonseca F. Werneck.
+        ``Finding Dominators in Practice.'' J. Graph Algorithms Appl. 10.1
+        (2006): 69-94.
+    \bibitem{cooper01}
+        Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. ``A simple, fast
+        dominance algorithm.'' Software Practice \& Experience 4 (2001): 1-10.
+    \bibitem{moe02}
+        M\"ossenb\:ock, Hanspeter, and Michael Pfeiffer. ``Linear scan register allocation
+        in the context of SSA form and register constraints.'' Compiler Construction.
+        Springer Berlin Heidelberg, 2002.
+    \bibitem{wimmer10}
+        Wimmer, Christian, and Michael Franz. ``Linear scan register allocation
+        on SSA form.'' Proceedings of the 8th annual IEEE/ACM international
+        symposium on Code generation and optimization. ACM, 2010. 
+\end{thebibliography}
 \end{document}
