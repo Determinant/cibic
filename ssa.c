@@ -303,8 +303,8 @@ void cphi_print(CPhi_t phi, CBlock_t blk) {
     fprintf(stderr, "\n");
 }
 
-void cblock_print(CBlock_t blk) {
-    fprintf(stderr, "_L%d:\n", blk->id + gbbase);
+void cblock_print(CBlock_t blk, int base) {
+    fprintf(stderr, "_L%d:\n", blk->id + base);
     {
         CPhi_t p, sp = blk->phis;
         for (p = sp->next; p != sp; p = p->next)
@@ -322,9 +322,10 @@ void cblock_print(CBlock_t blk) {
         }
     }
 }
-void ssa_func_print(CBlock_t p) {
-    for (; p; p = p->next)
-        cblock_print(p);
+void ssa_func_print(CFuncIR_t func) {
+    CBlock_t p;
+    for (p = func->entry; p; p = p->next)
+        cblock_print(p, func->gbbase);
 }
 void ssa_func(CType_t);
 void ssa_generate(int q) {
@@ -349,7 +350,7 @@ void ssa_generate(int q) {
         for (cf = func_ir; cf; cf = cf->next)
         {
             fprintf(stderr, "%s:\n", cf->func->name);
-            ssa_func_print(cf->entry);
+            ssa_func_print(cf);
         }
     }
 }
@@ -1717,6 +1718,7 @@ CRange_t crange_merge(CRange_t a, CRange_t b) {
 
 void add_range_(COpr_t opr, int begin, int end) {
     CRange_t range;
+    if (begin == end) return;
     range = NEW(CRange);
     range->l = begin;
     range->r = end;
