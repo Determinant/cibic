@@ -1,0 +1,16 @@
+digraph G {
+    a [shape = box, fontname = "monospace", label = "struct A"];
+    b [shape = box, fontname = "monospace", label = "b :: struct B"];
+    c [shape = box, fontname = "monospace", label = "i :: int"];
+    d [shape = box, fontname = "monospace", label = "j :: int"];
+    e [shape = box, fontname = "monospace", label = "x :: int"];
+    f [shape = box, fontname = "monospace", label = "y :: int"];
+    g [shape = box, fontname = "monospace", label = "next :: ptr"];
+    a -> b;
+    b -> c;
+    b -> d;
+    a -> e;
+    a -> f;
+    a -> g;
+    g -> a;
+}

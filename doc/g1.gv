@@ -1,0 +1,10 @@
+digraph G {
+    a [shape = box, fontname = "monospace", label = "a = x_0\nif (a == 0) goto _L1"];
+    b [shape = box, fontname = "monospace", label = "x_1 = 1"];
+    c [shape = box, fontname = "monospace", label = "x_2 = 2"];
+    d [shape = box, fontname = "monospace", label = "y_0 = x_? + 1"];
+    a -> b;
+    a -> c;
+    b -> d;
+    c -> d;
+}

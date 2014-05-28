@@ -3,7 +3,7 @@
 \usepackage{xeCJK, fontspec}
 \usepackage{amsmath, verbatim}
 \usepackage{setspace, float}
-\usepackage{graphicx, wrapfig}
+\usepackage{graphicx, wrapfig, algorithmicx}
 \usepackage{rotating, enumerate, minted, fancyvrb, longtable}
 \usepackage[left=1in, right=1in]{geometry}
 \usepackage[font=small]{caption}
@@ -61,17 +61,18 @@ boilerplate text which contains C code fragments to be filled in the generated
 lexer/parser. The best practice, I suggest, is to avoid embedding too much
 concrete code in the boilerplate. Instead, we shall write well-designed
 functions in a separate file (``\texttt{ast.c}'' in CIBIC) and invoke functions
-in the boilerplate. The reason is that it is almost not practical nor convenient
-to debug the generated lexer or parser. Using the seperation method, we can set
-up breakpoints in the seperate file easily and debug on the fly. The
-declarations of all functions that may be invoked during parsing can be found in
-``\texttt{ast.h}''.
+in the boilerplate. The reason is that it is almost not practical nor
+convenient to debug the generated lexer or parser. Using the seperation method,
+we can set up breakpoints in the seperate file easily and debug on the fly. The
+declarations of all functions that may be invoked during parsing can be found
+in``\texttt{ast.h}''.
 
-It requires a little more effort to track the location of each token using Flex.
-Luckily, Flex provides with a macro called ``\texttt{YY\_USER\_ACTION}'' to let
-the user do some extra actions after each token is read. So I maintained a
-global variable ``\texttt{yycolumn}'' to keep the current column, a global char
-array ``\texttt{linebuff}'' to buffer the text being read for error report.
+It requires a little more effort to track the location of each token using
+Flex.  Luckily, Flex provides with a macro called ``\texttt{YY\_USER\_ACTION}''
+to let the user do some extra actions after each token is read. So I maintained
+a global variable ``\texttt{yycolumn}'' to keep the current column, a global
+char array ``\texttt{linebuff}'' to buffer the text being read for error
+report.
 \begin{listing}[H]
     \centering
     \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
@@ -164,13 +165,13 @@ information.
 
 The key data structures in the semantic checking are \textbf{symbol tables}.
 Symbol tables maintain variables and types in different scopes across different
-name spaces. When a variable is defined, the corresponding type specifer will be
-checked and binds to the variable. Also, when the scope ends, all variable
+name spaces. When a variable is defined, the corresponding type specifer will
+be checked and binds to the variable. Also, when the scope ends, all variable
 bindings living within the scope will be removed from the table. Although they
 are removed from the table, the bindings are still referenced by some nodes on
 the AST, so that the AST becomes ``\textbf{annotated AST}''. In CIBIC, the
-variable reference is stored in ``\texttt{ext.var}'' field of ``\texttt{CNode}''
-and the type information of an subexpression is annotated at
+variable reference is stored in ``\texttt{ext.var}'' field of
+``\texttt{CNode}'' and the type information of an subexpression is annotated at
 ``\texttt{ext.type}''. Thus, in a word, symbol tables stores all symbols that
 are currently \textbf{visible}.
 
@@ -677,6 +678,7 @@ build_intervals();
 register_alloc();
     \end{minted}
     \caption{Workflow of IR in CIBIC}
+    \label{list:workflow}
 \end{listing}
 
 \subsection{Single Static Assignment Form}
@@ -686,16 +688,16 @@ once}. The property can simplify the liveness analysis and optimization, since
 all variables are assigned only once so the ``define-use'' relationship is much
 clearer that the original IR.
 
-However, it is not trival to convert an IR to SSA form, mainly because of the
+However, it is not trivial to convert an IR to SSA form, mainly because of the
 ``merging issue''. In figure \ref{fig:phi_function}, the control flow branches
-at the if statement and merges again when getting out of if. The question is,
-should we use \texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x + 1}
-statement? The answer is, it is only known at runtime. So a ``phi-function''
-\texttt{x\_3 = phi(x\_1, x\_2)} will be inserted at the merge point to wrap two
-possibilities.  Unfortunately, not only does this circumstance appear in if
-statement, but also exist in loops. How do we know where we should add an
-phi-function for certain variable? The answer is we can just insert
-phi-functions at dominance frontiers in the control flow graph.
+at the \texttt{if} statement and merges again when getting out of if. The
+question is, should we use \texttt{x\_1} or \texttt{x\_2} in the \texttt{y = x
++ 1} statement? The answer is, it is only known at runtime. So a
+``phi-function'' \texttt{x\_3 = phi(x\_1, x\_2)} will be inserted at the merge
+point to wrap two possibilities.  Unfortunately, not only does this
+circumstance appear in if statement, but also exist in loops. How do we know
+where we should add an phi-function for certain variable? The answer is we can
+just insert phi-functions at dominance frontiers in the control flow graph.
 \subsection{Phi-functions}
 There are several ways of computing dominance frontiers of a control flow
 graph.  But they all first construct the dominator tree and then deduce the
@@ -720,10 +722,10 @@ implement.
     \label{fig:phi_function}
 \end{figure}
 \subsection{Register Allocation}
-CIBIC uses linear scan register allocation \cite{moe02} to allocate registers \emph{before
-translating out of SSA form}. This method is different from traditional one and
-can make use of lifetime holes and instruction weights to improve the quality of
-the allocation.
+CIBIC uses linear scan register allocation \cite{moe02} to allocate registers
+\emph{before translating out of SSA form}. This method is different from
+traditional one and can make use of lifetime holes and instruction weights to
+improve the quality of the allocation.
 
 To run the allocation algorithm, we shall first compute live intervals.
 Unfortunately, the pseudo-code provided in the paper \cite{moe02} does not take
@@ -731,7 +733,9 @@ the loop cases into account. In another paper \cite{wimmer10}, I found the
 correct algorithm for coping with loops. Unfortunately, the pseudo-code in two
 papers are written in different forms and have different concepts in some
 details. So I learned from both of them and got my own algorithm (almost like
-the one in paper \cite{moe02}).
+the one in paper \cite{moe02}). Since the graph is traversed \textbf{only
+once}, the implementation is quite efficient (the traditional method for
+non-SSA IR requires iteration thus the time complexity is not guaranteed).
 
 In linear scan algorithm described in paper \cite{moe02}, we should maintain
 four sets: unhandled, handled, active, inactive. However, for the
@@ -746,49 +750,153 @@ set and the sentinel node helps us to move to another set conveniently. The
 algorithm also requires a pre-calculated weight of each interval (computed from
 the accesses to the interval) which helps to decide the spilled variable.
 \section{Performance and Optimization}
-\subsection{Compile Time}
+\subsection{Compilation Speed}
 CIBIC compiles very fast for all the given source code and some additional test
 cases. It costs CIBIC 0.10 second to compile all 52 programs, while gcc spends
 1.90 seconds to complete in the same testing environment. Although the test may
 not be complete or fair (since gcc is a much more sophisticated compiler), the
-result does show a decent and promising compile speed.
-\subsection{Compile Quality}
+result does show a decent and promising compilation speed.
+\subsection{Compilation Quality}
 In the final examination, the performance of MIPS assembly generated by CIBIC
 surpasses the ones generated by most of my classmates' Java-implemented
-compilers. It is worth mentioning that all of those few (just about three or
-four) compilers that produces better code are written in Java and none of them
-always generates better code than CIBIC. Also, in the circumstances where the
-code generated by CIBIC is not the best, the runtime difference between the
-best performance code and the one by CIBIC is small. Moreover, as far as I
-know, those compiler make use of inline optimization (not fully implemented)
-which may be very effective for some special code. However, CIBIC does not
-implement any form of inline optimization due to the limited time (To implement
-a decent inline optimization for an SSA-based and C-implemented compiler
-requires some extra work). Finally, I would like to aruge that all test cases
-provied by teaching assistants may not be complete or convincing. The major
-design flaw is all functions are very short and only have one or two nested if
-statement or loops (except test case: ``superloop''). Therefore, the advantage
-of SSA (especially the advanced register allocation algorithm) is not shown
-very well.
+compilers. It is worth mentioning that all of those few compilers that produces
+better code are written in Java and none of them always generates better code
+than CIBIC. Also, in the circumstances where the code generated by CIBIC is not
+the best, the runtime difference between the best performance code and the one
+by CIBIC is small. Moreover, as far as I know, those compiler make use of (not
+fully implemented) inline optimization which may be very effective for some
+special code. However, CIBIC does not implement any form of inline optimization
+due to the limited time (To implement a decent inline optimization for an
+SSA-based and C-implemented compiler requires some extra work). Finally, I
+would like to argue that all test cases provided by teaching assistants may not
+be complete or convincing. The major design flaw is all functions are very
+short and only have one or two nested \texttt{if} statement or loops (except
+test case: ``superloop''). Therefore, the advantage of SSA (especially the
+advanced register allocation algorithm) is not shown very well.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.5]{all.png}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.5]{all2.png}
+\end{figure}
+\begin{figure}[H]
+    \centering
+    \includegraphics[scale=0.5]{all3.png}
+\end{figure}
+
+The above figures show the ``normalized instruction'' for each compiler
+implementation with respect to different test cases. The ``normalized
+instruction'' is obtained by dividing the number of instructions by the best
+for the same test case, thus the lower, the better. There are 40 test cases
+taken into account. Some good implementations are picked out and bolded in the
+figures, while others are simply colored gray.
+
+Although CIBIC does not generate the best code in some test cases, the overall
+code quality is very good. Moreover, CIBIC has not implemented inline
+optimization yet. As I know, compilers that are presented in bolded lines in
+the second and the third figure all implement inline optimization, and before
+the optimization, their performance are not as good as CIBIC. Therefore CIBIC
+could do much more better.
+
 \subsection{Optimization}
 CIBIC implements the following optimizations: 
 \begin{itemize}
     \item constant propagation
     \item dead code elimination
     \item strength reduction
-    \item common subexpression eliminiation
+    \item common subexpression elimination
 \end{itemize}
 
-Unfortunately, these optimization do not seems to be very effective to the
+Unfortunately, these optimization do not seem to be very effective to the
 given test cases (although some may be effective to some specific test cases).
-However, the assembly level optimization does have a considerable effect. Some important techinques are:
+However, the assembly level optimization does have a considerable effect. Some
+important techniques are:
 \begin{itemize}
-    \item reduce the use of \texttt{seq} and \texttt{sne} by fusing them with subsequent \texttt{beq} or \texttt{bne}
+    \item reduce the use of \texttt{seq} and \texttt{sne} by fusing them with
+        subsequent \texttt{beq} or \texttt{bne}
     \item reduce the load of immediates
-    \item fuse the short-circuit operators and subsequent branch together (on the one hand it can reduce one or two extra jumps, on the other hand, the dominance of CFG may change so that common subexpression optimization can optimize more)
+    \item fuse the short-circuit operators and subsequent branch together (on
+        the one hand it can reduce one or two extra jumps, on the other hand,
+        the dominance of CFG may change so that common subexpression
+        optimization can optimize more)
 \end{itemize}
 
-We are not going to discuss optimization effectiveness in detail because all optimizations used by CIBIC are traditional. Instead, code snippets are presented and explained below to reveal \textbf{inappropriate naive implementation of some optimizations may be wrong}.
+We are not going to discuss optimization effectiveness in detail because all
+optimizations used by CIBIC are traditional. Instead, code snippets are
+presented and explained below to reveal \textbf{inappropriate naive
+implementation of some optimizations may be wrong}.
+
+Constant propagation could be safely applied if there were not any indirect
+modification to the propagated variable. Unfortunately, this is not always true.
+A typical indirection modification is via calling a function which modifies a
+global variable. Because of the function call, the modification is hidden from
+the compiler. Another common indirect modification is done via a pointer. A
+direct approach to get over these problem is to prevent the propagation over a
+function call and to mark those variable whose address is being referenced (by
+``\texttt{\&}'' operator) to disable the propagation of their value.
+
+The same things may also happen in common subexpression elimination. The code
+below demonstrates two typical situations in which the aggressive elimination
+may produce a wrong result.
+\begin{figure}[H]
+    \begin{minipage}{0.4\textwidth}
+        \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+    \centering
+        \begin{minted}{c}
+int N = 0;
+void f() { N = 2; }
+int main() {
+    int a, b;
+    a = N + 1;
+    f();
+    b = N + 1;
+    printf("%d\n", b); /* 3 */
+}
+        \end{minted}
+    \end{minipage}
+    %    \centering
+    \begin{minipage}{0.5\textwidth}
+        \RecustomVerbatimEnvironment{Verbatim}{BVerbatim}{}
+        \centering
+\begin{minted}{c}
+    int flag = 0;
+    int check(int x, int y) {
+        return x > 0 && y > 0 && (flag ^= 1);
+    }
+    int main() {
+        int x = 1, y = 2;
+        printf("%d\n", check(x, y)); /* 1 */
+        printf("%d\n", check(x, y)); /* 0 */
+        printf("%d\n", check(x, y)); /* 1 */
+    }
+\end{minted}
+    \end{minipage}
+    \label{fig:cse}
+\end{figure}
+Global common subexpression elimination should be performed while walking down
+the dominator tree \cite{sassa07}. Luckily, The dominator tree can be easily
+obtained because it is an important by-product of SSA construction. 
+
+In CIBIC, all optimizations need to be performed only once or twice as shown in
+listing \ref{list:workflow}. Because the implemented optimizations do not
+require iteration.
+
+\section{Conclusion}
+CIBIC is a simple but efficient C compiler implementation in C. It supports key
+characteristics of C language such as structs/unions, arrays, and various type
+of pointers. \texttt{typedef}, a very useful syntactic sugar is also
+implemented in CIBIC. Furthermore, CIBIC makes use of SSA to generate code of
+decent quality. As a lightweight compiler, it compiles much faster than gcc
+(gcc implements a lot more features though).
+
+Some standard syntax and features written in C are not supported by CIBIC:
+\texttt{enum}, \texttt{switch}, linking, preprocessing (such as
+\texttt{\#define}), etc. However, it is very possible to extend CIBIC to
+support these features. Some, for example \texttt{switch} statements are easy
+to be added.
 \begin{thebibliography}{9}
     \bibitem{grune12}
         Grune, Dick, et al. Modern Compiler Design. Springer, 2012.
@@ -803,12 +911,15 @@ We are not going to discuss optimization effectiveness in detail because all opt
         Cooper, Keith D., Timothy J. Harvey, and Ken Kennedy. ``A simple, fast
         dominance algorithm.'' Software Practice \& Experience 4 (2001): 1-10.
     \bibitem{moe02}
-        M\"ossenb\:ock, Hanspeter, and Michael Pfeiffer. ``Linear scan register allocation
-        in the context of SSA form and register constraints.'' Compiler Construction.
-        Springer Berlin Heidelberg, 2002.
+        M\"ossenb\:ock, Hanspeter, and Michael Pfeiffer. ``Linear scan register
+        allocation in the context of SSA form and register constraints.''
+        Compiler Construction.  Springer Berlin Heidelberg, 2002.
     \bibitem{wimmer10}
         Wimmer, Christian, and Michael Franz. ``Linear scan register allocation
         on SSA form.'' Proceedings of the 8th annual IEEE/ACM international
         symposium on Code generation and optimization. ACM, 2010. 
+    \bibitem{sassa07}
+        Tokyo Institute of Technology. Optimization in Static Single Assignment
+        Form
 \end{thebibliography}
 \end{document}
